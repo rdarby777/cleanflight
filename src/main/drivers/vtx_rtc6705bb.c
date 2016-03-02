@@ -39,8 +39,8 @@
 #include "drivers/vtx_rtc6705.h"
 
 #include "common/printf.h"
-#define dprintf(x) printf x
-//#define dprintf(x)
+//#define dprintf(x) printf x
+#define dprintf(x)
 
 // Requires 3 plain GPIO lines for SS, SCK and MOSI.
 
