@@ -228,6 +228,11 @@ void buttonsHandleColdBootButtonPresses(void)
 #endif
 
 #include "common/printf.h"
+
+//#define dprintf(x) printf x
+#define dprintf(x)
+
+#ifdef notdef
 serialPort_t *dprintPort;
 void dprintInit()
 {
@@ -240,6 +245,7 @@ void dprintInit()
 
         printf("\r\ndprintInit: OK\r\n");
 }
+#endif
 
 void init(void)
 {
@@ -357,7 +363,9 @@ void init(void)
     }
 #endif
 
+#ifdef notdef
 dprintInit();
+#endif
 
 #ifdef BBSPI
     const bbspiHardware_t *bbspiHardware = NULL;
