@@ -54,6 +54,8 @@
 #include "drivers/usb_io.h"
 #include "drivers/transponder_ir.h"
 #include "drivers/gyro_sync.h"
+#include "drivers/bbspi.h"
+#include "drivers/vtx.h"
 
 #include "rx/rx.h"
 
@@ -67,6 +69,7 @@
 #include "io/display.h"
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/transponder_ir.h"
+#include "io/vtxrc.h"
 
 #include "sensors/sensors.h"
 #include "sensors/sonar.h"
@@ -224,6 +227,22 @@ void buttonsHandleColdBootButtonPresses(void)
 
 #endif
 
+#include "common/printf.h"
+
+serialPort_t *dprintPort;
+
+void dprintInit()
+{
+        dprintPort = openSerialPort(SERIAL_PORT_UART2, FUNCTION_NONE, NULL, 57600, MODE_RXTX, SERIAL_NOT_INVERTED);
+
+        if (dprintPort == NULL)
+                return;
+
+        setPrintfSerialPort(dprintPort);
+
+        printf("\r\ndprintInit: OK\r\n");
+}
+
 void init(void)
 {
     drv_pwm_config_t pwm_params;
@@ -340,6 +359,25 @@ void init(void)
     }
 #endif
 
+dprintInit();
+
+#ifdef BBSPI
+    const bbspiHardware_t *bbspiHardware = NULL;
+    bbspiGPIOConfig_t bbspiGPIOConfig;
+    if (feature(FEATURE_BBSPI)) {
+        bbspiHardware = bbspiGetHardwareConfig();
+        bbspiGPIOConfig.ssGPIO = bbspiHardware->ss_gpio;
+        bbspiGPIOConfig.ssPin = bbspiHardware->ss_pin;
+        bbspiGPIOConfig.sckGPIO = bbspiHardware->sck_gpio;
+        bbspiGPIOConfig.sckPin = bbspiHardware->sck_pin;
+        bbspiGPIOConfig.mosiGPIO = bbspiHardware->mosi_gpio;
+        bbspiGPIOConfig.mosiPin = bbspiHardware->mosi_pin;
+        pwm_params.bbspiGPIOConfig = &bbspiGPIOConfig;
+    }
+#endif
+
+printf("init: bbspi check done\r\n");
+
     // when using airplane/wing mixer, servo/motor outputs are remapped
     if (masterConfig.mixerMode == MIXER_AIRPLANE || masterConfig.mixerMode == MIXER_FLYING_WING || masterConfig.mixerMode == MIXER_CUSTOM_AIRPLANE)
         pwm_params.airplane = true;
@@ -368,6 +406,9 @@ void init(void)
     pwm_params.useSerialRx = feature(FEATURE_RX_SERIAL);
 #ifdef SONAR
     pwm_params.useSonar = feature(FEATURE_SONAR);
+#endif
+#ifdef BBSPI
+    pwm_params.useBBSPI = feature(FEATURE_BBSPI);
 #endif
 
 #ifdef USE_SERVOS
@@ -638,6 +679,10 @@ void init(void)
 
 #ifdef CJMCU
     LED2_ON;
+#endif
+
+#ifdef VTX
+    (void)vtxRcInit();
 #endif
 
     // Latch active features AGAIN since some may be modified by init().
