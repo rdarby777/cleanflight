@@ -124,6 +124,7 @@
 #define DISPLAY
 #define VTX
 #define BBSPI
+#define VTXRC
 
 #define USE_UART1
 #define USE_UART2

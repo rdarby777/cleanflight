@@ -59,4 +59,9 @@ typedef struct profile_s {
 #ifdef GPS
     gpsProfile_t gpsProfile;
 #endif
+
+#ifdef VTXRC
+    vtxRcChannelActivationCondition_t vtxRcChannelActivationConditions[MAX_CHANNEL_ACTIVATION_CONDITION_COUNT];
+
+#endif
 } profile_t;

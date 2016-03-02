@@ -56,6 +56,8 @@
 
 #include "blackbox/blackbox.h"
 
+#include "io/vtxrc.h"
+
 #include "mw.h"
 
 #define AIRMODE_DEADBAND 12
@@ -314,6 +316,18 @@ void processRcStickPositions(rxConfig_t *rxConfig, throttleStatus_e throttleStat
     }
 #endif
 
+#ifdef VTXRC
+    if (feature(FEATURE_VTXRC)) {
+        if (rcSticks ==  THR_HI + YAW_LO + PIT_CE + ROL_HI)
+            vtxRcIncrementBand();
+        if (rcSticks ==  THR_HI + YAW_LO + PIT_CE + ROL_LO)
+            vtxRcDecrementBand();
+        if (rcSticks ==  THR_HI + YAW_HI + PIT_CE + ROL_HI)
+            vtxRcIncrementChannel();
+        if (rcSticks ==  THR_HI + YAW_HI + PIT_CE + ROL_LO)
+            vtxRcDecrementChannel();
+    }
+#endif
 }
 
 bool isModeActivationConditionPresent(modeActivationCondition_t *modeActivationConditions, boxId_e modeId)

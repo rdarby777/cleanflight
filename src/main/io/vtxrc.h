@@ -15,7 +15,12 @@
  * along with Cleanflight.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Place holder for future VTXRC integration.
+/*
+ * Author: Sean Blakemore (sean@impulserc.com)
+ *
+ * This source code is provided as is and can be used/modified so long
+ * as this header is maintained with the file at all times.
+ */
 
 #pragma once
 
@@ -25,4 +30,16 @@
 #define VTX_CHANNEL_MAX 						8
 #define MAX_CHANNEL_ACTIVATION_CONDITION_COUNT 	10
 
+typedef struct vtxRcChannelActivationCondition_s {
+    uint8_t auxChannelIndex;
+    uint8_t band;
+    uint8_t channel;
+    channelRange_t range;
+} vtxRcChannelActivationCondition_t;
+
 void vtxRcInit();
+void vtxRcIncrementBand();
+void vtxRcDecrementBand();
+void vtxRcIncrementChannel();
+void vtxRcDecrementChannel();
+void vtxRcUpdateActivatedChannel(vtxRcChannelActivationCondition_t *vtxRcChannelActivationConditions);

@@ -15,7 +15,13 @@
  * along with Cleanflight.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Place holder for future VTXRC integration
+/* Derived from: */
+/*
+ * Author: Sean Blakemore (sean@impulserc.com)
+ *
+ * This source code is provided as is and can be used/modified so long
+ * as this header is maintained with the file at all times.
+ */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -91,6 +97,10 @@
 
 #include "version.h"
 
+#include "io/rc_controls.h"
+bool isRangeActive(uint8_t auxChannelIndex, channelRange_t *range); // XXX BAD Should be declared and exported in rc_controls.h
+
+#ifdef VTX
 void vtxRcInit()
 {
     vtxInit();
@@ -106,3 +116,68 @@ void vtxRcInit()
         vtxSetFreq(masterConfig.vtx_mhz);
     }
 }
+#endif
+
+#ifdef VTXRC
+
+static uint8_t locked = 0;
+
+static void setChannelSaveAndNotify(uint8_t *bandOrChannel, uint8_t step, int32_t min, int32_t max)
+{
+    if (ARMING_FLAG(ARMED))
+        locked = 1;
+
+    if (masterConfig.vtx_mode == 0 && !locked) {
+        uint8_t temp = (*bandOrChannel) + step;
+        temp = constrain(temp, min, max);
+        *bandOrChannel = temp;
+
+        vtxSetChan(masterConfig.vtx_band, masterConfig.vtx_channel);
+        writeEEPROM();
+        readEEPROM();
+        beeperConfirmationBeeps(temp);
+    }
+}
+
+void vtxRcIncrementBand()
+{
+    setChannelSaveAndNotify(&(masterConfig.vtx_band), 1, VTX_BAND_MIN, VTX_BAND_MAX);
+}
+
+void vtxRcDecrementBand()
+{
+    setChannelSaveAndNotify(&(masterConfig.vtx_band), -1, VTX_BAND_MIN, VTX_BAND_MAX);
+}
+
+void vtxRcIncrementChannel()
+{
+    setChannelSaveAndNotify(&(masterConfig.vtx_channel), 1, VTX_CHANNEL_MIN, VTX_CHANNEL_MAX);
+}
+
+void vtxRcDecrementChannel()
+{
+    setChannelSaveAndNotify(&(masterConfig.vtx_channel), -1, VTX_CHANNEL_MIN, VTX_CHANNEL_MAX);
+}
+
+void vtxRcUpdateActivatedChannel(vtxRcChannelActivationCondition_t *vtxRcChannelActivationConditions)
+{
+    if (ARMING_FLAG(ARMED))
+        locked = 1;
+
+    if (masterConfig.vtx_mode == 2 && !locked) {
+        static uint8_t lastIndex = -1;
+        uint8_t index;
+
+        for (index = 0; index < MAX_CHANNEL_ACTIVATION_CONDITION_COUNT; index++) {
+            vtxRcChannelActivationCondition_t *vtxRcChannelActivationCondition = &vtxRcChannelActivationConditions[index];
+
+            if (isRangeActive(vtxRcChannelActivationCondition->auxChannelIndex, &vtxRcChannelActivationCondition->range)
+                && index != lastIndex) {
+                lastIndex = index;
+                vtxSetChan(vtxRcChannelActivationCondition->band, vtxRcChannelActivationCondition->channel);
+                break;
+            }
+        }
+    }
+}
+#endif

@@ -46,6 +46,7 @@ typedef enum {
     FEATURE_CHANNEL_FORWARDING = 1 << 20,
     FEATURE_TRANSPONDER = 1 << 21,
     FEATURE_BBSPI = 1 << 22,
+    FEATURE_VTXRC = 1 << 23
 } features_e;
 
 void handleOneshotFeatureChangeOnRestart(void);

@@ -170,6 +170,7 @@
 #define USE_CLI
 #define VTX
 #define BBSPI
+#define VTXRC
 
 #define SPEKTRUM_BIND
 // UART3,

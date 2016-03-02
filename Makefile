@@ -291,8 +291,7 @@ HIGHEND_SRC = \
 		   sensors/barometer.c \
 		   blackbox/blackbox.c \
 		   blackbox/blackbox_io.c \
-		   io/vtxrc.c \
-		   drivers/vtx_rtc6705bb.c
+		   io/vtxrc.c
 
 VCP_SRC = \
 		   vcp/hw_config.c \
@@ -342,6 +341,7 @@ NAZE_SRC = startup_stm32f10x_md_gcc.S \
 		   drivers/timer.c \
 		   drivers/timer_stm32f10x.c \
 		   io/flashfs.c \
+		   drivers/vtx_rtc6705bb.c \
 		   hardware_revision.c \
 		   $(HIGHEND_SRC) \
 		   $(COMMON_SRC)
@@ -622,6 +622,7 @@ SPRACINGF3_SRC = \
 		   drivers/serial_softserial.c \
 		   drivers/sonar_hcsr04.c \
 		   io/flashfs.c \
+		   drivers/vtx_rtc6705bb.c \
 		   $(HIGHEND_SRC) \
 		   $(COMMON_SRC)
 

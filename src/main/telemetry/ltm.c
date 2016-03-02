@@ -62,6 +62,7 @@
 #include "io/gimbal.h"
 #include "io/gps.h"
 #include "io/ledstrip.h"
+#include "io/vtxrc.h"
 
 #include "flight/mixer.h"
 #include "flight/pid.h"

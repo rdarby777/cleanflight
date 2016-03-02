@@ -228,9 +228,7 @@ void buttonsHandleColdBootButtonPresses(void)
 #endif
 
 #include "common/printf.h"
-
 serialPort_t *dprintPort;
-
 void dprintInit()
 {
         dprintPort = openSerialPort(SERIAL_PORT_UART2, FUNCTION_NONE, NULL, 57600, MODE_RXTX, SERIAL_NOT_INVERTED);
@@ -375,8 +373,6 @@ dprintInit();
         pwm_params.bbspiGPIOConfig = &bbspiGPIOConfig;
     }
 #endif
-
-printf("init: bbspi check done\r\n");
 
     // when using airplane/wing mixer, servo/motor outputs are remapped
     if (masterConfig.mixerMode == MIXER_AIRPLANE || masterConfig.mixerMode == MIXER_FLYING_WING || masterConfig.mixerMode == MIXER_CUSTOM_AIRPLANE)
