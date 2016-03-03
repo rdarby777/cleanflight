@@ -42,84 +42,6 @@
 //#define dprintf(x) printf x
 #define dprintf(x)
 
-// Requires 3 plain GPIO lines for SS, SCK and MOSI.
-
-// XXX Some possible pin assignment scenarios
-// XXX Should go into appropriate target.h
-
-#if defined(NAZE)
-#if 0
-// NAZE
-// SS on RC5/PA6, SCK on RC6/PA7, MOSI on RC7/PB0
-#define BBSPI_SS_GPIO      GPIOA
-#define BBSPI_SS_PIN       GPIO_Pin_6
-#define BBSPI_SCK_GPIO     GPIOA
-#define BBSPI_SCK_PIN      GPIO_Pin_7
-#define BBSPI_MOSI_GPIO    GPIOB
-#define BBSPI_MOSI_PIN     GPIO_Pin_0
-#endif
-
-#if 0
-// NAZE
-// SS on RC5/PA6, SCK on PB8/PWM5, MOSI on PB9/PWM6
-#define BBSPI_SS_GPIO      GPIOA
-#define BBSPI_SS_PIN       GPIO_Pin_6
-#define BBSPI_SCK_GPIO     GPIOB
-#define BBSPI_SCK_PIN      GPIO_Pin_8
-#define BBSPI_MOSI_GPIO    GPIOB
-#define BBSPI_MOSI_PIN     GPIO_Pin_9
-#endif
-
-#if 1
-// NAZE
-// SS on RC2/PA1(RSSI_ADC), SCK on PB8/PWM5, MOSI on PB9/PWM6
-#define BBSPI_SS_GPIO      GPIOA
-#define BBSPI_SS_PIN       GPIO_Pin_1
-#define BBSPI_SCK_GPIO     GPIOB
-#define BBSPI_SCK_PIN      GPIO_Pin_8
-#define BBSPI_MOSI_GPIO    GPIOB
-#define BBSPI_MOSI_PIN     GPIO_Pin_9
-#endif
-
-#if 0
-// NAZE
-// SS on RC1/PA0(CPPM), SCK on PB8/PWM5, MOSI on PB9/PWM6
-// Verified (SOFTSERIAL)
-#define BBSPI_SS_GPIO      GPIOA
-#define BBSPI_SS_PIN       GPIO_Pin_0
-#define BBSPI_SCK_GPIO     GPIOB
-#define BBSPI_SCK_PIN      GPIO_Pin_8
-#define BBSPI_MOSI_GPIO    GPIOB
-#define BBSPI_MOSI_PIN     GPIO_Pin_9
-#endif
-#endif // defined(NAZE)
-
-#if defined(SPRACINGF3)
-#if 1
-// SPRF3
-// SS on RC2/PA1/IO_1[4,BLUE](open), SCK on RC5/PA4/IO_1[5,YELLOW](VBAT), MOSI on RC6/PA5/IO_1[6,GREEN](CURRENT) (All on IO_1 connector)
-// Verified (RX_PPM only)
-#define BBSPI_SS_GPIO      GPIOA
-#define BBSPI_SS_PIN       GPIO_Pin_1
-#define BBSPI_SCK_GPIO     GPIOB
-#define BBSPI_SCK_PIN      GPIO_Pin_4
-#define BBSPI_MOSI_GPIO    GPIOB
-#define BBSPI_MOSI_PIN     GPIO_Pin_5
-#endif
-
-#if 0
-// SPRF3
-// SS on RC2/PA1, SCK on PWM7/PA2, MOSI on PWM8/PA3
-// Verified (RX_PPM only)
-#define BBSPI_SS_GPIO      GPIOA
-#define BBSPI_SS_PIN       GPIO_Pin_1
-#define BBSPI_SCK_GPIO     GPIOA
-#define BBSPI_SCK_PIN      GPIO_Pin_2
-#define BBSPI_MOSI_GPIO    GPIOA
-#define BBSPI_MOSI_PIN     GPIO_Pin_3
-#endif
-#endif // defined(SPRACINGF3)
-
 #if defined(VTX) && defined(BBSPI)
 //
 // Bit-banging SPI layer
@@ -128,7 +50,8 @@
 // device using the service at the moment, it is kept here.
 //
 
-// Find out ports to use from pin code variables:
+// Requires 3 plain GPIO ports for SS, SCK and MOSI.
+// Find out the ports to use from port code variables:
 // bbspi_ss
 // bbspi_sck
 // bbspi_mosi
