@@ -222,6 +222,16 @@ static bool getGPIOSpecFromCode(int portcode, GPIO_TypeDef **pGPIO, uint16_t *pP
     case 3:
         *pGPIO = GPIOC;
         break;
+    case 4:
+        *pGPIO = GPIOD;
+        break;
+    case 5:
+        *pGPIO = GPIOE;
+        break;
+    case 6:
+        *pGPIO = GPIOF;
+        break;
+    case 0: // Fall through
     default:
         return false;
     }
