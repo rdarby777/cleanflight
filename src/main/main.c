@@ -232,8 +232,8 @@ void buttonsHandleColdBootButtonPresses(void)
 //#define dprintf(x) printf x
 #define dprintf(x)
 
-#ifdef notdef
 serialPort_t *dprintPort;
+
 void dprintInit()
 {
         dprintPort = openSerialPort(SERIAL_PORT_UART2, FUNCTION_NONE, NULL, 57600, MODE_RXTX, SERIAL_NOT_INVERTED);
@@ -245,7 +245,6 @@ void dprintInit()
 
         dprintf(("\r\ndprintInit: OK\r\n"));
 }
-#endif
 
 void init(void)
 {
@@ -363,9 +362,7 @@ void init(void)
     }
 #endif
 
-#ifdef notdef
-dprintInit();
-#endif
+//dprintInit();
 
 #ifdef BBSPI
     const bbspiHardware_t *bbspiHardware = NULL;

@@ -110,6 +110,12 @@ typedef struct master_t {
     uint8_t blackbox_device;
 #endif
 
+#ifdef BBSPI
+    uint16_t bbspi_ss_code;
+    uint16_t bbspi_sck_code;
+    uint16_t bbspi_mosi_code;
+#endif
+
 #ifdef VTX
     uint8_t vtx_mode;
     uint16_t vtx_mhz;

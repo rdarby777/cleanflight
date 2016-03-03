@@ -708,6 +708,13 @@ const clivalue_t valueTable[] = {
     { "blackbox_rate_denom",        VAR_UINT8  | MASTER_VALUE,  &masterConfig.blackbox_rate_denom, .config.minmax = { 1,  32 } },
     { "blackbox_device",            VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.blackbox_device, .config.lookup = { TABLE_BLACKBOX_DEVICE } },
 #endif
+
+#ifdef BBSPI
+    { "bbspi_ss_code",              VAR_UINT16 | MASTER_VALUE,  &masterConfig.bbspi_ss_code, .config.minmax = { 0,  615 } },
+    { "bbspi_sck_code",             VAR_UINT16 | MASTER_VALUE,  &masterConfig.bbspi_sck_code, .config.minmax = { 0,  615 } },
+    { "bbspi_mosi_code",            VAR_UINT16 | MASTER_VALUE,  &masterConfig.bbspi_mosi_code, .config.minmax = { 0,  615 } },
+#endif
+
 #ifdef VTX
     { "vtx_band",                   VAR_UINT8  | MASTER_VALUE,  &masterConfig.vtx_band, .config.minmax = { 1, 5 } },
     { "vtx_channel",                VAR_UINT8  | MASTER_VALUE,  &masterConfig.vtx_channel, .config.minmax = { 1, 8 } },

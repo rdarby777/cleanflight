@@ -47,6 +47,7 @@
 // XXX Some possible pin assignment scenarios
 // XXX Should go into appropriate target.h
 
+#if defined(NAZE)
 #if 0
 // NAZE
 // SS on RC5/PA6, SCK on RC6/PA7, MOSI on RC7/PB0
@@ -69,7 +70,7 @@
 #define BBSPI_MOSI_PIN     GPIO_Pin_9
 #endif
 
-#if 0
+#if 1
 // NAZE
 // SS on RC2/PA1(RSSI_ADC), SCK on PB8/PWM5, MOSI on PB9/PWM6
 #define BBSPI_SS_GPIO      GPIOA
@@ -91,7 +92,9 @@
 #define BBSPI_MOSI_GPIO    GPIOB
 #define BBSPI_MOSI_PIN     GPIO_Pin_9
 #endif
+#endif // defined(NAZE)
 
+#if defined(SPRACINGF3)
 #if 1
 // SPRF3
 // SS on RC2/PA1/IO_1[4,BLUE](open), SCK on RC5/PA4/IO_1[5,YELLOW](VBAT), MOSI on RC6/PA5/IO_1[6,GREEN](CURRENT) (All on IO_1 connector)
@@ -115,6 +118,7 @@
 #define BBSPI_MOSI_GPIO    GPIOA
 #define BBSPI_MOSI_PIN     GPIO_Pin_3
 #endif
+#endif // defined(SPRACINGF3)
 
 #if defined(VTX) && defined(BBSPI)
 //
@@ -124,8 +128,139 @@
 // device using the service at the moment, it is kept here.
 //
 
+// Find out ports to use from pin code variables:
+// bbspi_ss
+// bbspi_sck
+// bbspi_mosi
+// 100th is GPIO (100 = GPIOA, 200=GPIOB, ... 600=GPIOB), and 10th & 1th are pin number, for example,
+//     101 = GPIOA, Pin 1 (PA1)
+//     204 = GPIOB, Pin 4 (PB4)
+//     313 = GPIOC, Pin 13 (PC13)
+//     600 = GPIOF, Pin 0 (PF0)
+//     0xx = Invalid
+// etc. Zero in 100th represents an invalid assignment, and is an initial value
+// for the variables.
+//
+// Some valid codes for ss,sck,mosi
+// SPRF3
+//	101 (PA1), 204 (PB4), 205 (PB5)
+//	101 (PA1), 102 (PWM7/PA2), 103 (PWM8/PA3)
+
+// Things for config_master.h
+
+#include "common/color.h"
+#include "common/axis.h"
+#include "common/maths.h"
+#include "common/filter.h"
+
+#include "drivers/sensor.h"
+#include "drivers/accgyro.h"
+#include "drivers/compass.h"
+#include "drivers/system.h"
+#include "drivers/gpio.h"
+#include "drivers/timer.h"
+#include "drivers/pwm_rx.h"
+#include "drivers/serial.h"
+
+#include "io/rc_controls.h"
+
+#include "sensors/sensors.h"
+#include "sensors/gyro.h"
+#include "sensors/compass.h"
+#include "sensors/acceleration.h"
+#include "sensors/barometer.h"
+#include "sensors/boardalignment.h"
+#include "sensors/battery.h"
+
+#include "io/beeper.h"
+#include "io/serial.h"
+#include "io/gimbal.h"
+#include "io/escservo.h"
+#include "io/rc_curves.h"
+#include "io/ledstrip.h"
+#include "io/gps.h"
+
+#include "rx/rx.h"
+
+#include "blackbox/blackbox_io.h"
+
+#include "telemetry/telemetry.h"
+
+#include "flight/mixer.h"
+#include "flight/pid.h"
+#include "flight/imu.h"
+#include "flight/failsafe.h"
+#include "flight/altitudehold.h"
+#include "flight/navigation.h"
+
+#include "config/runtime_config.h"
+#include "config/config.h"
+
+#include "config/config_profile.h"
+#include "config/config_master.h"
+
+// End of things for config_master.h
+
+static bool getGPIOSpecFromCode(int portcode, GPIO_TypeDef **pGPIO, uint16_t *pPin)
+{
+    int gpionum;
+    int pinnum;
+
+    if (portcode < 100)
+        return false;
+
+    gpionum = portcode / 100;
+    pinnum = portcode % 100;
+
+    switch(gpionum) {
+    case 1:
+        *pGPIO = GPIOA;
+        break;
+    case 2:
+        *pGPIO = GPIOB;
+        break;
+    case 3:
+        *pGPIO = GPIOC;
+        break;
+    default:
+        return false;
+    }
+
+    if (pinnum >= 16)
+        return false;
+
+    *pPin = 1 << pinnum;
+
+    return true;
+}
+
+static bool bbspihwChecked = false;
+static bbspiHardware_t bbspihw;
+static bool bbspihwValid = false;
+
+static bool getGPIOSpec()
+{
+    if (bbspihwChecked)
+        return bbspihwValid;
+
+    if (getGPIOSpecFromCode(masterConfig.bbspi_ss_code,
+            &bbspihw.ss_gpio, &bbspihw.ss_pin)
+        && getGPIOSpecFromCode(masterConfig.bbspi_sck_code,
+            &bbspihw.sck_gpio, &bbspihw.sck_pin)
+        && getGPIOSpecFromCode(masterConfig.bbspi_mosi_code,
+            &bbspihw.mosi_gpio, &bbspihw.mosi_pin)) {
+	bbspihwValid = true;
+    } else
+        bbspihwValid = false;
+
+    bbspihwChecked = true;
+
+    return bbspihwValid;
+}
+
 bbspiHardware_t *bbspiGetHardwareConfig()
 {
+#if 0
     static bbspiHardware_t bbspihardware = {
         .ss_gpio = BBSPI_SS_GPIO,
         .ss_pin = BBSPI_SS_PIN,
@@ -136,6 +271,12 @@ bbspiHardware_t *bbspiGetHardwareConfig()
     };
 
     return &bbspihardware;
+#else
+    if (getGPIOSpec())
+    	return &bbspihw;
+
+    return NULL;
+#endif
 }
 
 #define	GPIONAME(x) \
@@ -148,9 +289,6 @@ bbspiHardware_t *bbspiGetHardwareConfig()
 
 bool bbspiInit(bbspi_t *bbspi)
 {
-    if (!feature(FEATURE_BBSPI))
-        return false;
-
     dprintf(("bbspiInit: ss %s:%d sck %s:%d mosi %s:%d\r\n",
 	GPIONAME(bbspi->ss_gpio), GPIOPIN(bbspi->ss_cfg.pin),
 	GPIONAME(bbspi->sck_gpio), GPIOPIN(bbspi->sck_cfg.pin),
@@ -239,6 +377,7 @@ static void rtc6705_SetChan(bbspi_t *bbspi, int band, int chan)
 //
 
 static bbspi_t vtxbbspi = {
+#if 0
     .active = false,
     .ss_gpio = BBSPI_SS_GPIO,
     .ss_cfg = { BBSPI_SS_PIN, Mode_Out_PP, Speed_2MHz },
@@ -246,11 +385,27 @@ static bbspi_t vtxbbspi = {
     .sck_cfg = { BBSPI_SCK_PIN, Mode_Out_PP, Speed_2MHz },
     .mosi_gpio = BBSPI_MOSI_GPIO,
     .mosi_cfg = { BBSPI_MOSI_PIN, Mode_Out_PP, Speed_2MHz } 
+#else
+    .active = false,
+    .ss_cfg = { .mode = Mode_Out_PP, .speed = Speed_2MHz },
+    .sck_cfg = { .mode = Mode_Out_PP, .speed = Speed_2MHz },
+    .mosi_cfg = { .mode = Mode_Out_PP, .speed = Speed_2MHz } 
+#endif
 };
 
 bool vtxInit()
 {
     dprintf(("vtxInit:\r\n"));
+
+    if (!feature(FEATURE_BBSPI) || !getGPIOSpec())
+        return false;
+
+    vtxbbspi.ss_gpio = bbspihw.ss_gpio;
+    vtxbbspi.ss_cfg.pin = bbspihw.ss_pin;
+    vtxbbspi.sck_gpio = bbspihw.sck_gpio;
+    vtxbbspi.sck_cfg.pin = bbspihw.sck_pin;
+    vtxbbspi.mosi_gpio = bbspihw.mosi_gpio;
+    vtxbbspi.mosi_cfg.pin = bbspihw.mosi_pin;
 
     if (!bbspiInit(&vtxbbspi)) {
         dprintf(("vtxInit: bbspiInit() failed\r\n"));
