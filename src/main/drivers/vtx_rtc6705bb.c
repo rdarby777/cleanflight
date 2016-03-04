@@ -55,7 +55,7 @@
 // bbspi_ss
 // bbspi_sck
 // bbspi_mosi
-// 100th is GPIO (100 = GPIOA, 200=GPIOB, ... 600=GPIOB), and 10th & 1th are pin number, for example,
+// 100th is GPIO (100 = GPIOA, 200=GPIOC, ... 600=GPIOF), and 10th & 1th are pin number in decimal, for example,
 //     101 = GPIOA, Pin 1 (PA1)
 //     204 = GPIOB, Pin 4 (PB4)
 //     313 = GPIOC, Pin 13 (PC13)
