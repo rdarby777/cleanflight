@@ -38,10 +38,6 @@
 #include "drivers/vtx.h"
 #include "drivers/vtx_rtc6705.h"
 
-#include "common/printf.h"
-//#define dprintf(x) printf x
-#define dprintf(x)
-
 #if defined(VTX) && defined(BBSPI)
 //
 // Bit-banging SPI layer
@@ -81,6 +77,7 @@
 #include "drivers/gpio.h"
 #include "drivers/timer.h"
 #include "drivers/pwm_rx.h"
+#include "drivers/serial.h"
 
 #include "io/rc_controls.h"
 
@@ -109,6 +106,14 @@
 #include "config/config_master.h"
 
 // End of things for config_master.h
+
+#ifdef DPRINTF
+#include "common/printf.h"
+extern serialPort_t *dprintPort;
+#define dprintf(x) if (dprintPort) printf x
+#else
+#define dprintf(x)
+#endif
 
 static bool getGPIOSpecFromCode(int portcode, GPIO_TypeDef **pGPIO, uint16_t *pPin)
 {
