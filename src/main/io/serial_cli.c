@@ -183,7 +183,7 @@ static const char * const featureNames[] = {
     "SERVO_TILT", "SOFTSERIAL", "GPS", "FAILSAFE",
     "SONAR", "TELEMETRY", "CURRENT_METER", "3D", "RX_PARALLEL_PWM",
     "RX_MSP", "RSSI_ADC", "LED_STRIP", "DISPLAY", "ONESHOT125",
-    "BLACKBOX", "CHANNEL_FORWARDING", "TRANSPONDER", "BBSPI",
+    "BLACKBOX", "CHANNEL_FORWARDING", "TRANSPONDER", "VTXBB",
     NULL
 };
 
@@ -709,10 +709,10 @@ const clivalue_t valueTable[] = {
     { "blackbox_device",            VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.blackbox_device, .config.lookup = { TABLE_BLACKBOX_DEVICE } },
 #endif
 
-#ifdef BBSPI
-    { "bbspi_ss_code",              VAR_UINT16 | MASTER_VALUE,  &masterConfig.bbspi_ss_code, .config.minmax = { 0,  615 } },
-    { "bbspi_sck_code",             VAR_UINT16 | MASTER_VALUE,  &masterConfig.bbspi_sck_code, .config.minmax = { 0,  615 } },
-    { "bbspi_mosi_code",            VAR_UINT16 | MASTER_VALUE,  &masterConfig.bbspi_mosi_code, .config.minmax = { 0,  615 } },
+#ifdef VTXBB
+    { "vtxbb_ss_pcode",              VAR_UINT16 | MASTER_VALUE,  &masterConfig.vtxbb_ss_pcode, .config.minmax = { 0,  615 } },
+    { "vtxbb_sck_pcode",             VAR_UINT16 | MASTER_VALUE,  &masterConfig.vtxbb_sck_pcode, .config.minmax = { 0,  615 } },
+    { "vtxbb_mosi_pcode",            VAR_UINT16 | MASTER_VALUE,  &masterConfig.vtxbb_mosi_pcode, .config.minmax = { 0,  615 } },
 #endif
 
 #ifdef VTX

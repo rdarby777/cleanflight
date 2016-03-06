@@ -123,7 +123,7 @@
 #define INVERTER
 #define DISPLAY
 #define VTX
-#define BBSPI
+#define VTXBB
 
 #define USE_UART1
 #define USE_UART2

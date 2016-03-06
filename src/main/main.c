@@ -54,8 +54,8 @@
 #include "drivers/usb_io.h"
 #include "drivers/transponder_ir.h"
 #include "drivers/gyro_sync.h"
-#include "drivers/bbspi.h"
 #include "drivers/vtx.h"
+#include "drivers/vtxbb.h"
 
 #include "rx/rx.h"
 
@@ -367,18 +367,18 @@ void init(void)
     dprintInit();
 #endif
 
-#ifdef BBSPI
-    const bbspiHardware_t *bbspiHardware = NULL;
-    bbspiGPIOConfig_t bbspiGPIOConfig;
-    if (feature(FEATURE_BBSPI)) {
-        bbspiHardware = bbspiGetHardwareConfig();
-        bbspiGPIOConfig.ssGPIO = bbspiHardware->ss_gpio;
-        bbspiGPIOConfig.ssPin = bbspiHardware->ss_pin;
-        bbspiGPIOConfig.sckGPIO = bbspiHardware->sck_gpio;
-        bbspiGPIOConfig.sckPin = bbspiHardware->sck_pin;
-        bbspiGPIOConfig.mosiGPIO = bbspiHardware->mosi_gpio;
-        bbspiGPIOConfig.mosiPin = bbspiHardware->mosi_pin;
-        pwm_params.bbspiGPIOConfig = &bbspiGPIOConfig;
+#ifdef VTXBB
+    const vtxbbHardware_t *vtxbbHardware = NULL;
+    vtxbbGPIOConfig_t vtxbbGPIOConfig;
+    if (feature(FEATURE_VTXBB)) {
+        vtxbbHardware = vtxbbGetHardwareConfig();
+        vtxbbGPIOConfig.ssGPIO = vtxbbHardware->ss_gpio;
+        vtxbbGPIOConfig.ssPin = vtxbbHardware->ss_pin;
+        vtxbbGPIOConfig.sckGPIO = vtxbbHardware->sck_gpio;
+        vtxbbGPIOConfig.sckPin = vtxbbHardware->sck_pin;
+        vtxbbGPIOConfig.mosiGPIO = vtxbbHardware->mosi_gpio;
+        vtxbbGPIOConfig.mosiPin = vtxbbHardware->mosi_pin;
+        pwm_params.vtxbbGPIOConfig = &vtxbbGPIOConfig;
     }
 #endif
 
@@ -411,8 +411,8 @@ void init(void)
 #ifdef SONAR
     pwm_params.useSonar = feature(FEATURE_SONAR);
 #endif
-#ifdef BBSPI
-    pwm_params.useBBSPI = feature(FEATURE_BBSPI);
+#ifdef VTXBB
+    pwm_params.useVTXBB = feature(FEATURE_VTXBB);
 #endif
 
 #ifdef USE_SERVOS

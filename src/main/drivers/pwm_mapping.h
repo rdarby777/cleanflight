@@ -52,15 +52,15 @@ typedef struct sonarGPIOConfig_s {
     uint16_t echoPin;
 } sonarGPIOConfig_t;
 
-#ifdef BBSPI
-typedef struct bbspiGPIOConfig_s {
+#ifdef VTXBB
+typedef struct vtxbbGPIOConfig_s {
     GPIO_TypeDef *ssGPIO;
     uint16_t ssPin;
     GPIO_TypeDef *sckGPIO;
     uint16_t sckPin;
     GPIO_TypeDef *mosiGPIO;
     uint16_t mosiPin;
-} bbspiGPIOConfig_t;
+} vtxbbGPIOConfig_t;
 #endif
 
 typedef struct drv_pwm_config_s {
@@ -88,8 +88,8 @@ typedef struct drv_pwm_config_s {
 #ifdef SONAR
     bool useSonar;
 #endif
-#ifdef BBSPI
-    bool useBBSPI;
+#ifdef VTXBB
+    bool useVTXBB;
 #endif
 #ifdef USE_SERVOS
     bool useServos;
@@ -102,8 +102,8 @@ typedef struct drv_pwm_config_s {
     uint16_t idlePulse;  // PWM value to use when initializing the driver. set this to either PULSE_1MS (regular pwm),
                          // some higher value (used by 3d mode), or 0, for brushed pwm drivers.
     sonarGPIOConfig_t *sonarGPIOConfig;
-#ifdef BBSPI
-    bbspiGPIOConfig_t *bbspiGPIOConfig;
+#ifdef VTXBB
+    vtxbbGPIOConfig_t *vtxbbGPIOConfig;
 #endif
 } drv_pwm_config_t;
 

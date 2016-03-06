@@ -753,17 +753,17 @@ pwmIOConfiguration_t *pwmInit(drv_pwm_config_t *init)
         }
 #endif
 
-#ifdef BBSPI
-        if (init->bbspiGPIOConfig &&
+#ifdef VTXBB
+        if (init->vtxbbGPIOConfig &&
             (
-                (timerHardwarePtr->gpio == init->bbspiGPIOConfig->ssGPIO &&
-                 timerHardwarePtr->pin == init->bbspiGPIOConfig->ssPin)
+                (timerHardwarePtr->gpio == init->vtxbbGPIOConfig->ssGPIO &&
+                 timerHardwarePtr->pin == init->vtxbbGPIOConfig->ssPin)
             ||
-                (timerHardwarePtr->gpio == init->bbspiGPIOConfig->sckGPIO &&
-                 timerHardwarePtr->pin == init->bbspiGPIOConfig->sckPin)
+                (timerHardwarePtr->gpio == init->vtxbbGPIOConfig->sckGPIO &&
+                 timerHardwarePtr->pin == init->vtxbbGPIOConfig->sckPin)
             ||
-                (timerHardwarePtr->gpio == init->bbspiGPIOConfig->mosiGPIO &&
-                 timerHardwarePtr->pin == init->bbspiGPIOConfig->mosiPin)
+                (timerHardwarePtr->gpio == init->vtxbbGPIOConfig->mosiGPIO &&
+                 timerHardwarePtr->pin == init->vtxbbGPIOConfig->mosiPin)
             )
         ) {
             continue;

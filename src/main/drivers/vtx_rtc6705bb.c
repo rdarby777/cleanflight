@@ -34,11 +34,11 @@
 #include "gpio.h"
 #include "system.h"
 
-#include "drivers/bbspi.h"
+#include "drivers/vtxbb.h"
 #include "drivers/vtx.h"
 #include "drivers/vtx_rtc6705.h"
 
-#if defined(VTX) && defined(BBSPI)
+#if defined(VTX) && defined(VTXBB)
 //
 // Bit-banging SPI layer
 // Ideally, it would be a separate service with a separate file,
@@ -47,11 +47,11 @@
 //
 
 // Requires 3 plain GPIO ports for SS, SCK and MOSI.
-// Find out the ports to use from port code variables:
-// bbspi_ss
-// bbspi_sck
-// bbspi_mosi
-// 100th is GPIO (100 = GPIOA, 200=GPIOC, ... 600=GPIOF), and 10th & 1th are pin number in decimal, for example,
+// Find out the ports to use from 'port code' variables:
+// vtxbb_ss_pcode, vtxbb_sck_pcode and vtxbb_mosi_pcode.
+// A port code is a 3-digit decimal number whose 100th
+// represent a GPIO (100 = GPIOA, 200=GPIOC, ... 600=GPIOF),
+// and 10th & 1th are pin number in decimal, for example,
 //     101 = GPIOA, Pin 1 (PA1)
 //     204 = GPIOB, Pin 4 (PB4)
 //     313 = GPIOC, Pin 13 (PC13)
@@ -59,13 +59,8 @@
 //     0xx = Invalid
 // etc. Zero in 100th represents an invalid assignment, and is an initial value
 // for the variables.
-//
-// Some valid codes for ss,sck,mosi
-// SPRF3
-//	101 (PA1), 204 (PB4), 205 (PB5)
-//	101 (PA1), 102 (PWM7/PA2), 103 (PWM8/PA3)
 
-// Things for including config_master.h
+// Magic spell to include config_master.h
 
 #include "common/color.h"
 #include "common/axis.h"
@@ -75,9 +70,9 @@
 #include "drivers/accgyro.h"
 #include "drivers/compass.h"
 #include "drivers/gpio.h"
+#include "drivers/serial.h"
 #include "drivers/timer.h"
 #include "drivers/pwm_rx.h"
-#include "drivers/serial.h"
 
 #include "io/rc_controls.h"
 
@@ -158,49 +153,36 @@ static bool getGPIOSpecFromCode(int portcode, GPIO_TypeDef **pGPIO, uint16_t *pP
     return true;
 }
 
-static bool bbspihwChecked = false;
-static bbspiHardware_t bbspihw;
-static bool bbspihwValid = false;
+static bool vtxbbHwChecked = false;
+static vtxbbHardware_t vtxbbhw;
+static bool vtxbbhwValid = false;
 
 static bool getGPIOSpec()
 {
-    if (bbspihwChecked)
-        return bbspihwValid;
+    if (vtxbbHwChecked)
+        return vtxbbhwValid;
 
-    if (getGPIOSpecFromCode(masterConfig.bbspi_ss_code,
-            &bbspihw.ss_gpio, &bbspihw.ss_pin)
-        && getGPIOSpecFromCode(masterConfig.bbspi_sck_code,
-            &bbspihw.sck_gpio, &bbspihw.sck_pin)
-        && getGPIOSpecFromCode(masterConfig.bbspi_mosi_code,
-            &bbspihw.mosi_gpio, &bbspihw.mosi_pin)) {
-	bbspihwValid = true;
+    if (getGPIOSpecFromCode(masterConfig.vtxbb_ss_pcode,
+            &vtxbbhw.ss_gpio, &vtxbbhw.ss_pin)
+        && getGPIOSpecFromCode(masterConfig.vtxbb_sck_pcode,
+            &vtxbbhw.sck_gpio, &vtxbbhw.sck_pin)
+        && getGPIOSpecFromCode(masterConfig.vtxbb_mosi_pcode,
+            &vtxbbhw.mosi_gpio, &vtxbbhw.mosi_pin)) {
+	vtxbbhwValid = true;
     } else
-        bbspihwValid = false;
+        vtxbbhwValid = false;
 
-    bbspihwChecked = true;
+    vtxbbHwChecked = true;
 
-    return bbspihwValid;
+    return vtxbbhwValid;
 }
 
-bbspiHardware_t *bbspiGetHardwareConfig()
+vtxbbHardware_t *vtxbbGetHardwareConfig()
 {
-#if 0
-    static bbspiHardware_t bbspihardware = {
-        .ss_gpio = BBSPI_SS_GPIO,
-        .ss_pin = BBSPI_SS_PIN,
-        .sck_gpio = BBSPI_SCK_GPIO,
-        .sck_pin = BBSPI_SCK_PIN,
-        .mosi_gpio = BBSPI_MOSI_GPIO,
-        .mosi_pin = BBSPI_MOSI_PIN
-    };
-
-    return &bbspihardware;
-#else
     if (getGPIOSpec())
-    	return &bbspihw;
+    	return &vtxbbhw;
 
     return NULL;
-#endif
 }
 
 #define	GPIONAME(x) \
@@ -211,50 +193,50 @@ bbspiHardware_t *bbspiGetHardwareConfig()
 #define	GPIOPIN(x) \
 	(ffs(x) - 1)
 
-bool bbspiInit(bbspi_t *bbspi)
+bool vtxbbInit(vtxbb_t *vtxbb)
 {
-    dprintf(("bbspiInit: ss %s:%d sck %s:%d mosi %s:%d\r\n",
-	GPIONAME(bbspi->ss_gpio), GPIOPIN(bbspi->ss_cfg.pin),
-	GPIONAME(bbspi->sck_gpio), GPIOPIN(bbspi->sck_cfg.pin),
-	GPIONAME(bbspi->mosi_gpio), GPIOPIN(bbspi->mosi_cfg.pin)));
+    dprintf(("vtxbbInit: ss %s:%d sck %s:%d mosi %s:%d\r\n",
+	GPIONAME(vtxbb->ss_gpio), GPIOPIN(vtxbb->ss_cfg.pin),
+	GPIONAME(vtxbb->sck_gpio), GPIOPIN(vtxbb->sck_cfg.pin),
+	GPIONAME(vtxbb->mosi_gpio), GPIOPIN(vtxbb->mosi_cfg.pin)));
 
-    gpioInit(bbspi->ss_gpio, &bbspi->ss_cfg);
-    gpioInit(bbspi->sck_gpio, &bbspi->sck_cfg);
-    gpioInit(bbspi->mosi_gpio, &bbspi->mosi_cfg);
-    BBSPI_SS_HI(bbspi);
+    gpioInit(vtxbb->ss_gpio, &vtxbb->ss_cfg);
+    gpioInit(vtxbb->sck_gpio, &vtxbb->sck_cfg);
+    gpioInit(vtxbb->mosi_gpio, &vtxbb->mosi_cfg);
+    VTXBB_SS_HI(vtxbb);
 
-    bbspi->active = true;
+    vtxbb->active = true;
 
     return true;
 }
 
-void bbspiWrite(bbspi_t *bbspi, uint32_t data, int bits)
+void vtxbbWrite(vtxbb_t *vtxbb, uint32_t data, int bits)
 {
     int i;
 
-    BBSPI_SS_LO(bbspi);
+    VTXBB_SS_LO(vtxbb);
 
     delayMicroseconds(5);
 
     for (i = 0; i < bits; i++) {
 
         if (data & 1)
-            BBSPI_MOSI_HI(bbspi);
+            VTXBB_MOSI_HI(vtxbb);
         else
-            BBSPI_MOSI_LO(bbspi);
+            VTXBB_MOSI_LO(vtxbb);
 
 		delayMicroseconds(1);	// Wait for data to settle(!!!)
 
-        BBSPI_SCK_HI(bbspi);
+        VTXBB_SCK_HI(vtxbb);
 
         delayMicroseconds(1);	// Paranoia
 
-        BBSPI_SCK_LO(bbspi);
+        VTXBB_SCK_LO(vtxbb);
 
             data >>= 1;
     }
 
-    BBSPI_SS_HI(bbspi);
+    VTXBB_SS_HI(vtxbb);
 }
 
 //
@@ -274,7 +256,7 @@ uint16_t freqTab[VTX_BAND_MAX][VTX_CHANNEL_MAX] = {
 #define RTC6705WDATA(addr, rw, data) \
     ((addr & 0xf) | (rw << 4) | (data << 5))
 
-static void rtc6705_SetFreq(bbspi_t *bbspi, int freq)
+static void rtc6705_SetFreq(vtxbb_t *vtxbb, int freq)
 {
     int g = freq * RREG / (2 * Fosc);
     int ndiv = g / 64;
@@ -284,55 +266,45 @@ static void rtc6705_SetFreq(bbspi_t *bbspi, int freq)
 
     dprintf(("rtc6705_SetFreq: addr 0x%x data 0x%x -> 0x%x\r\n", 1, ((ndiv << 7)|adiv), RTC6705WDATA(1, 1, ((ndiv << 7)|adiv))));
 
-    bbspiWrite(bbspi, RTC6705WDATA(0, 1, RREG), 25);
+    vtxbbWrite(vtxbb, RTC6705WDATA(0, 1, RREG), 25);
 
     delayMicroseconds(20);
 
-    bbspiWrite(bbspi, RTC6705WDATA(1, 1, ((ndiv << 7)|adiv)), 25);
+    vtxbbWrite(vtxbb, RTC6705WDATA(1, 1, ((ndiv << 7)|adiv)), 25);
 }
 
-static void rtc6705_SetChan(bbspi_t *bbspi, int band, int chan)
+static void rtc6705_SetChan(vtxbb_t *vtxbb, int band, int chan)
 {
-    rtc6705_SetFreq(bbspi, freqTab[band][chan]);
+    rtc6705_SetFreq(vtxbb, freqTab[band][chan]);
 }
 
 //
 // VTX instance and API
 //
 
-static bbspi_t vtxbbspi = {
-#if 0
-    .active = false,
-    .ss_gpio = BBSPI_SS_GPIO,
-    .ss_cfg = { BBSPI_SS_PIN, Mode_Out_PP, Speed_2MHz },
-    .sck_gpio = BBSPI_SCK_GPIO,
-    .sck_cfg = { BBSPI_SCK_PIN, Mode_Out_PP, Speed_2MHz },
-    .mosi_gpio = BBSPI_MOSI_GPIO,
-    .mosi_cfg = { BBSPI_MOSI_PIN, Mode_Out_PP, Speed_2MHz } 
-#else
+static vtxbb_t vtxbb = {
     .active = false,
     .ss_cfg = { .mode = Mode_Out_PP, .speed = Speed_2MHz },
     .sck_cfg = { .mode = Mode_Out_PP, .speed = Speed_2MHz },
     .mosi_cfg = { .mode = Mode_Out_PP, .speed = Speed_2MHz } 
-#endif
 };
 
 bool vtxInit()
 {
     dprintf(("vtxInit:\r\n"));
 
-    if (!feature(FEATURE_BBSPI) || !getGPIOSpec())
+    if (!feature(FEATURE_VTXBB) || !getGPIOSpec())
         return false;
 
-    vtxbbspi.ss_gpio = bbspihw.ss_gpio;
-    vtxbbspi.ss_cfg.pin = bbspihw.ss_pin;
-    vtxbbspi.sck_gpio = bbspihw.sck_gpio;
-    vtxbbspi.sck_cfg.pin = bbspihw.sck_pin;
-    vtxbbspi.mosi_gpio = bbspihw.mosi_gpio;
-    vtxbbspi.mosi_cfg.pin = bbspihw.mosi_pin;
+    vtxbb.ss_gpio = vtxbbhw.ss_gpio;
+    vtxbb.ss_cfg.pin = vtxbbhw.ss_pin;
+    vtxbb.sck_gpio = vtxbbhw.sck_gpio;
+    vtxbb.sck_cfg.pin = vtxbbhw.sck_pin;
+    vtxbb.mosi_gpio = vtxbbhw.mosi_gpio;
+    vtxbb.mosi_cfg.pin = vtxbbhw.mosi_pin;
 
-    if (!bbspiInit(&vtxbbspi)) {
-        dprintf(("vtxInit: bbspiInit() failed\r\n"));
+    if (!vtxbbInit(&vtxbb)) {
+        dprintf(("vtxInit: vtxbbInit() failed\r\n"));
 	return false;
     }
 
@@ -344,14 +316,14 @@ bool vtxInit()
 void vtxSetFreq(int mhz)
 {
     dprintf(("vtxSetFreq: mhz %d\r\n", mhz));
-    if (vtxbbspi.active)
-    	rtc6705_SetFreq(&vtxbbspi, mhz);
+    if (vtxbb.active)
+    	rtc6705_SetFreq(&vtxbb, mhz);
 }
 
 void vtxSetChan(int band, int chan)
 {
     dprintf(("vtxSetChan: band %d chan %d\r\n", band, chan));
-    if (vtxbbspi.active)
-    	rtc6705_SetChan(&vtxbbspi, band - 1, chan - 1);
+    if (vtxbb.active)
+    	rtc6705_SetChan(&vtxbb, band - 1, chan - 1);
 }
 #endif

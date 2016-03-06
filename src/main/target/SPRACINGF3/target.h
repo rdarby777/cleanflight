@@ -169,7 +169,7 @@
 #define USE_SERVOS
 #define USE_CLI
 #define VTX
-#define BBSPI
+#define VTXBB
 
 #define SPEKTRUM_BIND
 // UART3,

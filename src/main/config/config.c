@@ -515,10 +515,10 @@ STATIC_UNIT_TESTED void resetConf(void)
     masterConfig.blackbox_rate_denom = 1;
 #endif
 
-#ifdef BBSPI
-    masterConfig.bbspi_ss_code = 0;
-    masterConfig.bbspi_sck_code = 0;
-    masterConfig.bbspi_mosi_code = 0;
+#ifdef VTXBB
+    masterConfig.vtxbb_ss_pcode = 0;
+    masterConfig.vtxbb_sck_pcode = 0;
+    masterConfig.vtxbb_mosi_pcode = 0;
 #endif
 
 #ifdef VTX
