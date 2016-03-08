@@ -38,28 +38,6 @@
 #include "drivers/vtx.h"
 #include "drivers/vtx_rtc6705.h"
 
-#if defined(VTX) && defined(VTXBB)
-//
-// Bit-banging SPI layer
-// Ideally, it would be a separate service with a separate file,
-// e.g., drivers/bus_spi_soft.c or something, but since there is no other
-// device using the service at the moment, it is kept here.
-//
-
-// Requires 3 plain GPIO ports for SS, SCK and MOSI.
-// Find out the ports to use from 'port code' variables:
-// vtxbb_ss_pcode, vtxbb_sck_pcode and vtxbb_mosi_pcode.
-// A port code is a 3-digit decimal number whose 100th
-// represent a GPIO (100 = GPIOA, 200=GPIOC, ... 600=GPIOF),
-// and 10th & 1th are pin number in decimal, for example,
-//     101 = GPIOA, Pin 1 (PA1)
-//     204 = GPIOB, Pin 4 (PB4)
-//     313 = GPIOC, Pin 13 (PC13)
-//     600 = GPIOF, Pin 0 (PF0)
-//     0xx = Invalid
-// etc. Zero in 100th represents an invalid assignment, and is an initial value
-// for the variables.
-
 // Magic spell to include config_master.h
 
 #include "common/color.h"
@@ -100,7 +78,30 @@
 #include "config/config_profile.h"
 #include "config/config_master.h"
 
-// End of things for config_master.h
+// End of the spell for config_master.h
+
+#if defined(VTX) && defined(VTXBB)
+//
+// Bit-banging SPI layer
+// Ideally, it would be a separate service with a separate file,
+// e.g., drivers/bus_spi_soft.c or something, but since there is no other
+// device using the service at the moment, it is kept here.
+//
+
+// Requires 3 plain GPIO ports for SS, SCK and MOSI.
+// Find out the ports to use from 'port code' variables:
+// vtxbb_ss_pcode, vtxbb_sck_pcode and vtxbb_mosi_pcode.
+// A port code is a 3-digit decimal number whose 100th
+// represent a GPIO (100 = GPIOA, 200=GPIOC, ... 600=GPIOF),
+// and 10th & 1th are pin number in decimal, for example,
+//     101 = GPIOA, Pin 1 (PA1)
+//     204 = GPIOB, Pin 4 (PB4)
+//     313 = GPIOC, Pin 13 (PC13)
+//     600 = GPIOF, Pin 0 (PF0)
+//     0xx = Invalid
+// etc. Zero in 100th represents an invalid assignment, and is an initial value
+// for the variables.
+
 
 #ifdef DPRINTF
 #include "common/printf.h"
