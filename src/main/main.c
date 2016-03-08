@@ -368,10 +368,10 @@ void init(void)
 #endif
 
 #ifdef VTXBB
-    const vtxbbHardware_t *vtxbbHardware = NULL;
+    const vtxbbHardware_t *vtxbbHardware;
     vtxbbGPIOConfig_t vtxbbGPIOConfig;
-    if (feature(FEATURE_VTXBB)) {
-        vtxbbHardware = vtxbbGetHardwareConfig();
+    if (feature(FEATURE_VTXBB) &&
+            (vtxbbHardware = vtxbbGetHardwareConfig())) {
         vtxbbGPIOConfig.ssGPIO = vtxbbHardware->ss_gpio;
         vtxbbGPIOConfig.ssPin = vtxbbHardware->ss_pin;
         vtxbbGPIOConfig.sckGPIO = vtxbbHardware->sck_gpio;
@@ -379,6 +379,10 @@ void init(void)
         vtxbbGPIOConfig.mosiGPIO = vtxbbHardware->mosi_gpio;
         vtxbbGPIOConfig.mosiPin = vtxbbHardware->mosi_pin;
         pwm_params.vtxbbGPIOConfig = &vtxbbGPIOConfig;
+        pwm_params.useVTXBB = true;	// Never used ...
+    } else {
+        pwm_params.vtxbbGPIOConfig = NULL;
+        pwm_params.useVTXBB = false;	// Never used ...
     }
 #endif
 
@@ -410,9 +414,6 @@ void init(void)
     pwm_params.useSerialRx = feature(FEATURE_RX_SERIAL);
 #ifdef SONAR
     pwm_params.useSonar = feature(FEATURE_SONAR);
-#endif
-#ifdef VTXBB
-    pwm_params.useVTXBB = feature(FEATURE_VTXBB);
 #endif
 
 #ifdef USE_SERVOS
