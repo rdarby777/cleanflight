@@ -169,7 +169,12 @@
 #define USE_SERVOS
 #define USE_CLI
 #define VTX
+<<<<<<< HEAD
 #define VTXBB
+=======
+#define BBSPI
+#define VTXRC
+>>>>>>> 2c95c0e... Initial commit for VTXRC integration
 
 #define SPEKTRUM_BIND
 // UART3,

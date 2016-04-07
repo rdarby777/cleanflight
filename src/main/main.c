@@ -227,6 +227,23 @@ void buttonsHandleColdBootButtonPresses(void)
 
 #endif
 
+<<<<<<< HEAD
+=======
+#include "common/printf.h"
+serialPort_t *dprintPort;
+void dprintInit()
+{
+        dprintPort = openSerialPort(SERIAL_PORT_UART2, FUNCTION_NONE, NULL, 57600, MODE_RXTX, SERIAL_NOT_INVERTED);
+
+        if (dprintPort == NULL)
+                return;
+
+        setPrintfSerialPort(dprintPort);
+
+        printf("\r\ndprintInit: OK\r\n");
+}
+
+>>>>>>> 2c95c0e... Initial commit for VTXRC integration
 void init(void)
 {
     drv_pwm_config_t pwm_params;

@@ -123,7 +123,12 @@
 #define INVERTER
 #define DISPLAY
 #define VTX
+<<<<<<< HEAD
 #define VTXBB
+=======
+#define BBSPI
+#define VTXRC
+>>>>>>> 2c95c0e... Initial commit for VTXRC integration
 
 #define USE_UART1
 #define USE_UART2

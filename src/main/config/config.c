@@ -38,6 +38,7 @@
 #include "drivers/serial.h"
 
 #include "io/rc_controls.h"
+#include "io/vtxrc.h"
 
 #include "sensors/sensors.h"
 #include "sensors/gyro.h"

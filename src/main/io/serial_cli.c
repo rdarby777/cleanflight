@@ -58,6 +58,7 @@
 #include "io/flashfs.h"
 #include "io/beeper.h"
 #include "io/asyncfatfs/asyncfatfs.h"
+#include "io/vtxrc.h"
 
 #include "rx/rx.h"
 #include "rx/spektrum.h"
@@ -161,6 +162,10 @@ static void cliFlashRead(char *cmdline);
 static void cliSdInfo(char *cmdline);
 #endif
 
+#ifdef VTXRC
+static void cliVtxAux(char *cmdline);
+#endif
+
 // buffer
 static char cliBuffer[48];
 static uint32_t bufferIndex = 0;
@@ -183,8 +188,13 @@ static const char * const featureNames[] = {
     "SERVO_TILT", "SOFTSERIAL", "GPS", "FAILSAFE",
     "SONAR", "TELEMETRY", "CURRENT_METER", "3D", "RX_PARALLEL_PWM",
     "RX_MSP", "RSSI_ADC", "LED_STRIP", "DISPLAY", "ONESHOT125",
+<<<<<<< HEAD
     "BLACKBOX", "CHANNEL_FORWARDING", "TRANSPONDER", "VTXBB",
     NULL
+=======
+    "BLACKBOX", "CHANNEL_FORWARDING", "TRANSPONDER",
+    "BBSPI", "VTXRC", NULL
+>>>>>>> 2c95c0e... Initial commit for VTXRC integration
 };
 
 // sync this with rxFailsafeChannelMode_e
@@ -306,7 +316,11 @@ const clicmd_t cmdTable[] = {
 #ifndef SKIP_TASK_STATISTICS
     CLI_COMMAND_DEF("tasks", "show task stats", NULL, cliTasks),
 #endif
+#ifdef VTXRC
+    CLI_COMMAND_DEF("vtxaux", "vtx channels on switch", NULL, cliVtxAux),
+#endif
     CLI_COMMAND_DEF("version", "show version", NULL, cliVersion),
+
 };
 #define CMD_COUNT (sizeof(cmdTable) / sizeof(clicmd_t))
 
@@ -1651,6 +1665,67 @@ static void cliFlashRead(char *cmdline)
 }
 
 #endif
+#endif
+
+#ifdef VTXRC
+static void cliVtxAux(char *cmdline)
+{
+    int i, val = 0;
+    char *ptr;
+
+    if (isEmpty(cmdline)) {
+        // print out vtx channel settings
+        for (i = 0; i < MAX_CHANNEL_ACTIVATION_CONDITION_COUNT; i++) {
+            vtxRcChannelActivationCondition_t *cac = &currentProfile->vtxRcChannelActivationConditions[i];
+            cliPrintf("vtxaux %u %u %u %u %u %u\r\n",
+                i,
+                cac->auxChannelIndex,
+                cac->band,
+                cac->channel,
+                MODE_STEP_TO_CHANNEL_VALUE(cac->range.startStep),
+                MODE_STEP_TO_CHANNEL_VALUE(cac->range.endStep)
+            );
+        }
+    } else {
+        ptr = cmdline;
+        i = atoi(ptr++);
+        if (i < MAX_CHANNEL_ACTIVATION_CONDITION_COUNT) {
+            vtxRcChannelActivationCondition_t *cac = &currentProfile->vtxRcChannelActivationConditions[i];
+            uint8_t validArgumentCount = 0;
+            ptr = strchr(ptr, ' ');
+            if (ptr) {
+                val = atoi(++ptr);
+                if (val >= 0 && val < MAX_AUX_CHANNEL_COUNT) {
+                    cac->auxChannelIndex = val;
+                    validArgumentCount++;
+                }
+            }
+            ptr = strchr(ptr, ' ');
+            if (ptr) {
+                val = atoi(++ptr);
+                if (val >= VTX_BAND_MIN && val <= VTX_BAND_MAX) {
+                    cac->band = val;
+                    validArgumentCount++;
+                }
+            }
+            ptr = strchr(ptr, ' ');
+            if (ptr) {
+                val = atoi(++ptr);
+                if (val >= VTX_CHANNEL_MIN && val <= VTX_CHANNEL_MAX) {
+                    cac->channel = val;
+                    validArgumentCount++;
+                }
+            }
+            ptr = processChannelRangeArgs(ptr, &cac->range, &validArgumentCount);
+
+            if (validArgumentCount != 5) {
+                memset(cac, 0, sizeof(vtxRcChannelActivationCondition_t));
+            }
+        } else {
+            cliShowArgumentRangeError("index", 0, MAX_CHANNEL_ACTIVATION_CONDITION_COUNT - 1);
+        }
+    }
+}
 #endif
 
 static void dumpValues(uint16_t valueSection)

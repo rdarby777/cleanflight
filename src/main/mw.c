@@ -66,6 +66,7 @@
 #include "io/statusindicator.h"
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/transponder_ir.h"
+#include "io/vtxrc.h"
 
 
 #include "rx/rx.h"
@@ -579,6 +580,12 @@ void processRx(void)
             telemetryCheckState();
             mspAllocateSerialPorts(&masterConfig.serialConfig);
         }
+    }
+#endif
+
+#ifdef VTXRC
+    if (feature(FEATURE_VTXRC)) {
+        vtxRcUpdateActivatedChannel(currentProfile->vtxRcChannelActivationConditions);
     }
 #endif
 
