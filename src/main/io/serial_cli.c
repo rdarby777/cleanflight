@@ -188,13 +188,8 @@ static const char * const featureNames[] = {
     "SERVO_TILT", "SOFTSERIAL", "GPS", "FAILSAFE",
     "SONAR", "TELEMETRY", "CURRENT_METER", "3D", "RX_PARALLEL_PWM",
     "RX_MSP", "RSSI_ADC", "LED_STRIP", "DISPLAY", "ONESHOT125",
-<<<<<<< HEAD
-    "BLACKBOX", "CHANNEL_FORWARDING", "TRANSPONDER", "VTXBB",
-    NULL
-=======
     "BLACKBOX", "CHANNEL_FORWARDING", "TRANSPONDER",
-    "BBSPI", "VTXRC", NULL
->>>>>>> 2c95c0e... Initial commit for VTXRC integration
+    "VTXBB", "VTXRC", NULL
 };
 
 // sync this with rxFailsafeChannelMode_e
@@ -316,11 +311,10 @@ const clicmd_t cmdTable[] = {
 #ifndef SKIP_TASK_STATISTICS
     CLI_COMMAND_DEF("tasks", "show task stats", NULL, cliTasks),
 #endif
+    CLI_COMMAND_DEF("version", "show version", NULL, cliVersion),
 #ifdef VTXRC
     CLI_COMMAND_DEF("vtxaux", "vtx channels on switch", NULL, cliVtxAux),
 #endif
-    CLI_COMMAND_DEF("version", "show version", NULL, cliVersion),
-
 };
 #define CMD_COUNT (sizeof(cmdTable) / sizeof(clicmd_t))
 

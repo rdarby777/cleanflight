@@ -45,12 +45,8 @@ typedef enum {
     FEATURE_BLACKBOX = 1 << 19,
     FEATURE_CHANNEL_FORWARDING = 1 << 20,
     FEATURE_TRANSPONDER = 1 << 21,
-<<<<<<< HEAD
     FEATURE_VTXBB = 1 << 22,
-=======
-    FEATURE_BBSPI = 1 << 22,
     FEATURE_VTXRC = 1 << 23
->>>>>>> 2c95c0e... Initial commit for VTXRC integration
 } features_e;
 
 void handleOneshotFeatureChangeOnRestart(void);

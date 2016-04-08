@@ -65,6 +65,7 @@
 #include "io/escservo.h"
 #include "io/ledstrip.h"
 #include "io/gps.h"
+#include "io/vtxrc.h"
 
 #include "telemetry/telemetry.h"
 

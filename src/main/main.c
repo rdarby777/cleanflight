@@ -227,8 +227,6 @@ void buttonsHandleColdBootButtonPresses(void)
 
 #endif
 
-<<<<<<< HEAD
-=======
 #include "common/printf.h"
 serialPort_t *dprintPort;
 void dprintInit()
@@ -243,7 +241,6 @@ void dprintInit()
         printf("\r\ndprintInit: OK\r\n");
 }
 
->>>>>>> 2c95c0e... Initial commit for VTXRC integration
 void init(void)
 {
     drv_pwm_config_t pwm_params;

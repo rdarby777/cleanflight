@@ -97,12 +97,9 @@
 
 #include "version.h"
 
-<<<<<<< HEAD
-=======
 #include "io/rc_controls.h"
 bool isRangeActive(uint8_t auxChannelIndex, channelRange_t *range); // XXX BAD Should be declared and exported in rc_controls.h
 
->>>>>>> 2c95c0e... Initial commit for VTXRC integration
 #ifdef VTX
 void vtxRcInit()
 {
@@ -120,11 +117,8 @@ void vtxRcInit()
     }
 }
 #endif
-<<<<<<< HEAD
-=======
 
 #ifdef VTXRC
-
 static uint8_t locked = 0;
 
 static void setChannelSaveAndNotify(uint8_t *bandOrChannel, uint8_t step, int32_t min, int32_t max)
@@ -186,4 +180,3 @@ void vtxRcUpdateActivatedChannel(vtxRcChannelActivationCondition_t *vtxRcChannel
     }
 }
 #endif
->>>>>>> 2c95c0e... Initial commit for VTXRC integration
