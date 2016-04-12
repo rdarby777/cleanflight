@@ -115,6 +115,9 @@ typedef struct master_t {
 #ifdef VTXRC
     vtxRcChannelActivationCondition_t vtxRcChannelActivationConditions[MAX_CHANNEL_ACTIVATION_CONDITION_COUNT];
 #endif
+    uint16_t vtx_custom[MAX_VTX_CUSTOM_CHANNEL];
+    uint8_t vtx_custom_count;
+    uint8_t vtx_custom_channel;
 
 #ifdef RTC6705_BB
     uint16_t vtxbb_ss_pcode;

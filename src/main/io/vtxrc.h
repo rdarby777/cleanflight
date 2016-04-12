@@ -31,6 +31,7 @@
 #define VTX_CHANNEL_MAX 8
 
 #define MAX_CHANNEL_ACTIVATION_CONDITION_COUNT     10
+#define MAX_VTX_CUSTOM_CHANNEL 8
 
 typedef struct vtxRcChannelActivationCondition_s {
     uint8_t auxChannelIndex;
