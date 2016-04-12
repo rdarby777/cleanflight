@@ -527,6 +527,12 @@ STATIC_UNIT_TESTED void resetConf(void)
     masterConfig.vtx_mhz = 5740;
     masterConfig.vtx_band = 4;
     masterConfig.vtx_channel = 1;
+#ifdef VTXRC
+    memset(masterConfig.vtx_custom, 0, sizeof(masterConfig.vtx_custom));
+    masterConfig.vtx_custom[0] = 5740;
+    masterConfig.vtx_custom_count = 1;
+    masterConfig.vtx_custom_channel = 1;
+#endif
 #endif
 
     // alternative defaults settings for COLIBRI RACE targets

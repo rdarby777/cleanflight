@@ -107,13 +107,15 @@ void vtxRcInit()
 
 #ifndef VTXRC
     if (!(masterConfig.vtx_mode == 0 || masterConfig.vtx_mode == 1))
-	masterConfig.vtx_mode = 0;
+        masterConfig.vtx_mode = 0;
 #endif
 
     if (masterConfig.vtx_mode == 0) {
         vtxSetChan(masterConfig.vtx_band, masterConfig.vtx_channel);
     } else if (masterConfig.vtx_mode == 1) {
         vtxSetFreq(masterConfig.vtx_mhz);
+    } else if (masterConfig.vtx_mode == 3) {
+        vtxSetFreq(masterConfig.vtx_custom[masterConfig.vtx_custom_channel]);
     }
 }
 #endif
@@ -131,7 +133,10 @@ static void setChannelSaveAndNotify(uint8_t *bandOrChannel, uint8_t step, int32_
         temp = constrain(temp, min, max);
         *bandOrChannel = temp;
 
-        vtxSetChan(masterConfig.vtx_band, masterConfig.vtx_channel);
+        if (masterConfig.vtx_mode == 0)
+            vtxSetChan(masterConfig.vtx_band, masterConfig.vtx_channel);
+        else if (masterConfig.vtx_mode == 3)
+            vtxSetFreq(masterConfig.vtx_custom[masterConfig.vtx_custom_channel]);
         writeEEPROM();
         readEEPROM();
         beeperConfirmationBeeps(temp);
@@ -140,22 +145,30 @@ static void setChannelSaveAndNotify(uint8_t *bandOrChannel, uint8_t step, int32_
 
 void vtxRcIncrementBand()
 {
-    setChannelSaveAndNotify(&(masterConfig.vtx_band), 1, VTX_BAND_MIN, VTX_BAND_MAX);
+    if (masterConfig.vtx_mode == 0)
+        setChannelSaveAndNotify(&(masterConfig.vtx_band), 1, VTX_BAND_MIN, VTX_BAND_MAX);
 }
 
 void vtxRcDecrementBand()
 {
-    setChannelSaveAndNotify(&(masterConfig.vtx_band), -1, VTX_BAND_MIN, VTX_BAND_MAX);
+    if (masterConfig.vtx_mode == 0)
+        setChannelSaveAndNotify(&(masterConfig.vtx_band), -1, VTX_BAND_MIN, VTX_BAND_MAX);
 }
 
 void vtxRcIncrementChannel()
 {
-    setChannelSaveAndNotify(&(masterConfig.vtx_channel), 1, VTX_CHANNEL_MIN, VTX_CHANNEL_MAX);
+    if (masterConfig.vtx_mode == 0)
+        setChannelSaveAndNotify(&(masterConfig.vtx_channel), 1, VTX_CHANNEL_MIN, VTX_CHANNEL_MAX);
+    else if (masterConfig.vtx_mode == 3)
+        setChannelSaveAndNotify(&(masterConfig.vtx_custom_channel), 1, 1, MAX_VTX_CUSTOM_CHANNEL);
 }
 
 void vtxRcDecrementChannel()
 {
-    setChannelSaveAndNotify(&(masterConfig.vtx_channel), -1, VTX_CHANNEL_MIN, VTX_CHANNEL_MAX);
+    if (masterConfig.vtx_mode == 0)
+        setChannelSaveAndNotify(&(masterConfig.vtx_channel), -1, VTX_CHANNEL_MIN, VTX_CHANNEL_MAX);
+    else if (masterConfig.vtx_mode == 3)
+        setChannelSaveAndNotify(&(masterConfig.vtx_custom_channel), -1, 1, MAX_VTX_CUSTOM_CHANNEL);
 }
 
 void vtxRcUpdateActivatedChannel(vtxRcChannelActivationCondition_t *vtxRcChannelActivationConditions)

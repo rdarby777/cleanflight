@@ -121,6 +121,10 @@ typedef struct master_t {
     uint16_t vtx_mhz;
     uint8_t vtx_band;
     uint8_t vtx_channel;
+#define MAX_VTX_CUSTOM_CHANNEL 8
+    uint16_t vtx_custom[MAX_VTX_CUSTOM_CHANNEL];
+    uint8_t vtx_custom_count;
+    uint8_t vtx_custom_channel;
 #endif
 
     uint8_t magic_ef;                       // magic number, should be 0xEF

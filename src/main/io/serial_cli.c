@@ -164,6 +164,7 @@ static void cliSdInfo(char *cmdline);
 
 #ifdef VTXRC
 static void cliVtxAux(char *cmdline);
+static void cliVtxCustom(char *cmdline);
 #endif
 
 // buffer
@@ -314,6 +315,7 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("version", "show version", NULL, cliVersion),
 #ifdef VTXRC
     CLI_COMMAND_DEF("vtxaux", "vtx channels on switch", NULL, cliVtxAux),
+    CLI_COMMAND_DEF("vtxcustom", "custom frequency band", NULL, cliVtxCustom),
 #endif
 };
 #define CMD_COUNT (sizeof(cmdTable) / sizeof(clicmd_t))
@@ -728,6 +730,7 @@ const clivalue_t valueTable[] = {
     { "vtx_band",                   VAR_UINT8  | MASTER_VALUE,  &masterConfig.vtx_band, .config.minmax = { 1, 5 } },
     { "vtx_channel",                VAR_UINT8  | MASTER_VALUE,  &masterConfig.vtx_channel, .config.minmax = { 1, 8 } },
     { "vtx_mhz",                    VAR_UINT16 | MASTER_VALUE,  &masterConfig.vtx_mhz, .config.minmax = { 5600, 5950 } },
+    { "vtx_custom_channel",         VAR_UINT8  | MASTER_VALUE,  &masterConfig.vtx_custom_channel, .config.minmax = { 1, 8 } },
 #endif
 
     { "magzero_x",                  VAR_INT16  | MASTER_VALUE, &masterConfig.magZero.raw[X], .config.minmax = { -32768,  32767 } },
@@ -1720,6 +1723,68 @@ static void cliVtxAux(char *cmdline)
         }
     }
 }
+
+#include "drivers/vtx_rtc6705.h"
+
+static void cliVtxCustom(char *cmdline)
+{
+    int i;
+    int nchan = 0;
+    int val;
+    char *p, *q, *r;
+    unsigned short channels[MAX_VTX_CUSTOM_CHANNEL];
+
+    if (isEmpty(cmdline)) {
+        // print out custom vtx array
+        cliPrintf("vtxcustom");
+        for (i = 0 ; i < MAX_VTX_CUSTOM_CHANNEL ; i++)
+            if (masterConfig.vtx_custom[i])
+                cliPrintf(" %u", masterConfig.vtx_custom[i]);
+        cliPrintf("\r\n");
+        return;
+    }
+
+    memset((void *)channels, 0, sizeof(channels));
+    p = cmdline;        // start scanner
+    r = strchr(p, 0);    // EOL sentinel
+    nchan = 0;
+
+    for (p = cmdline, r = strchr(p, 0) ; p < r ; p = q + 1) {
+        // Look for start char
+        for ( ; *p && *p == ' ' ; p++);
+        if (*p == 0)
+            break;
+
+        // Look for delim or EOL
+        for (q = p ; *q >= '0' && *q <= '9' ; q++);
+        *q = 0;
+
+        val = atoi(p);
+
+        if (val < VTX_FREQ_MIN || val > VTX_FREQ_MAX) {
+            cliPrintf("Invalid freq %s\r\n", p);
+            return;
+        }
+
+        if (nchan == MAX_VTX_CUSTOM_CHANNEL) {
+            cliPrintf("Too many freqs\r\n");
+            return;
+        }
+
+        channels[nchan++] = val;
+    }
+
+    if (nchan == 0) {
+        cliPrint("Empty freq list\r\n");
+        return;
+    }
+
+    for (i = 0 ; i < MAX_VTX_CUSTOM_CHANNEL ; i++)
+        masterConfig.vtx_custom[i] = channels[i];
+
+    masterConfig.vtx_custom_count = nchan;
+    masterConfig.vtx_custom_channel = 1;	// Reset current channel upon list modification
+}
 #endif
 
 static void dumpValues(uint16_t valueSection)
@@ -1904,6 +1969,14 @@ static void cliDump(char *cmdline)
                 }
             }
         }
+#endif
+
+#ifdef VTXRC
+        cliPrint("\r\n# vtxaux\r\n");
+        cliVtxAux("");
+
+	cliPrint("\r\n# vtxcustom\r\n");
+	cliVtxCustom("");
 #endif
 
         printSectionBreak();
@@ -2482,7 +2555,7 @@ static void cliGet(char *cmdline)
 
 
     if (matchedCommands) {
-    	return;
+        return;
     }
 
     cliPrint("Invalid name\r\n");
