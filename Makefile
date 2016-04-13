@@ -18,7 +18,8 @@
 TARGET		?= NAZE
 
 # Compile-time options
-OPTIONS		?=
+#OPTIONS		?=
+OPTIONS		?= VTX VTXRC VTXBB
 
 # Debugger optons, must be empty or GDB
 DEBUG ?=

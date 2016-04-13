@@ -128,7 +128,7 @@ static void setChannelSaveAndNotify(uint8_t *bandOrChannel, uint8_t step, int32_
     if (ARMING_FLAG(ARMED))
         locked = 1;
 
-    if (masterConfig.vtx_mode == 0 && !locked) {
+    if ((masterConfig.vtx_mode == 0 || masterConfig.vtx_mode == 3) && !locked) {
         uint8_t temp = (*bandOrChannel) + step;
         temp = constrain(temp, min, max);
         *bandOrChannel = temp;
@@ -136,7 +136,7 @@ static void setChannelSaveAndNotify(uint8_t *bandOrChannel, uint8_t step, int32_
         if (masterConfig.vtx_mode == 0)
             vtxSetChan(masterConfig.vtx_band, masterConfig.vtx_channel);
         else if (masterConfig.vtx_mode == 3)
-            vtxSetFreq(masterConfig.vtx_custom[masterConfig.vtx_custom_channel]);
+            vtxSetFreq(masterConfig.vtx_custom[masterConfig.vtx_custom_channel - 1]);
         writeEEPROM();
         readEEPROM();
         beeperConfirmationBeeps(temp);
@@ -160,7 +160,7 @@ void vtxRcIncrementChannel()
     if (masterConfig.vtx_mode == 0)
         setChannelSaveAndNotify(&(masterConfig.vtx_channel), 1, VTX_CHANNEL_MIN, VTX_CHANNEL_MAX);
     else if (masterConfig.vtx_mode == 3)
-        setChannelSaveAndNotify(&(masterConfig.vtx_custom_channel), 1, 1, MAX_VTX_CUSTOM_CHANNEL);
+        setChannelSaveAndNotify(&(masterConfig.vtx_custom_channel), 1, 1, masterConfig.vtx_custom_count);
 }
 
 void vtxRcDecrementChannel()
@@ -168,7 +168,7 @@ void vtxRcDecrementChannel()
     if (masterConfig.vtx_mode == 0)
         setChannelSaveAndNotify(&(masterConfig.vtx_channel), -1, VTX_CHANNEL_MIN, VTX_CHANNEL_MAX);
     else if (masterConfig.vtx_mode == 3)
-        setChannelSaveAndNotify(&(masterConfig.vtx_custom_channel), -1, 1, MAX_VTX_CUSTOM_CHANNEL);
+        setChannelSaveAndNotify(&(masterConfig.vtx_custom_channel), -1, 1, masterConfig.vtx_custom_count);
 }
 
 void vtxRcUpdateActivatedChannel(vtxRcChannelActivationCondition_t *vtxRcChannelActivationConditions)
