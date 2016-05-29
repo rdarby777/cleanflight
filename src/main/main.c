@@ -719,6 +719,9 @@ int main(void) {
 #ifdef TRANSPONDER
     setTaskEnabled(TASK_TRANSPONDER, feature(FEATURE_TRANSPONDER));
 #endif
+#ifdef I2CSERIAL
+    setTaskEnabled(TASK_I2CSERIAL, true);
+#endif
 
     while (true) {
         scheduler();
