@@ -43,6 +43,8 @@
 #include "drivers/serial_usb_vcp.h"
 #endif
 
+#include "drivers/serial_nxp7x0.h"
+
 #include "io/serial.h"
 #include "serial_cli.h"
 #include "serial_msp.h"
@@ -109,6 +111,8 @@ const serialPortIdentifier_e serialPortIdentifiers[SERIAL_PORT_COUNT] = {
 #ifdef USE_SOFTSERIAL2
     SERIAL_PORT_SOFTSERIAL2,
 #endif
+    SERIAL_PORT_NXPSERIAL1,
+    SERIAL_PORT_NXPSERIAL2,
 };
 
 STATIC_UNIT_TESTED uint8_t serialPortCount;
@@ -356,6 +360,19 @@ serialPort_t *openSerialPort(
             serialSetMode(serialPort, mode);
             break;
 #endif
+
+        case SERIAL_PORT_NXPSERIAL1:
+            serialPort = openNXPSerial(NXPSERIAL1, callback, baudRate, options);
+            serialSetMode(serialPort, mode);
+            break;
+
+#if 0
+        case SERIAL_PORT_NXPSERIAL2:
+            serialPort = openNXPSerial(NXPSERIAL2, callback, baudRate, options);
+            serialSetMode(serialPort, mode);
+            break;
+#endif
+
         default:
             break;
     }

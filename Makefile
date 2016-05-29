@@ -18,7 +18,7 @@
 TARGET		?= NAZE
 
 # Compile-time options
-OPTIONS		?=
+OPTIONS		?= I2CSERIAL
 
 # Debugger optons, must be empty or GDB
 DEBUG ?=
@@ -638,6 +638,7 @@ SPRACINGF3_SRC = \
 		   drivers/light_ws2811strip_stm32f30x.c \
 		   drivers/serial_softserial.c \
 		   drivers/sonar_hcsr04.c \
+		   drivers/serial_nxp7x0.c \
 		   io/flashfs.c \
 		   $(HIGHEND_SRC) \
 		   $(COMMON_SRC)

@@ -20,8 +20,13 @@
 #define     IS7x0_REG_IOCONTROL  0X0E
 #define     IS7x0_REG_EFCR       0X0F
 
+// Divisor registers
+// Can only be accessed when LCR[7] (IS7x0_LCR_DIVLATEN) = 1 and LCR != 0xbf
 #define     IS7x0_REG_DLL        0x00
 #define     IS7x0_REG_DLH        0X01
+
+// Enhanced register set
+// Can only be accessed when LCR == 0xbf
 
 #define     IS7x0_REG_EFR        0X02
 #define     IS7x0_REG_XON1       0X04
@@ -62,7 +67,7 @@
 #define       IS7x0_LCR_PAREVEN    0x18
 #define       IS7x0_LCR_PARONE     0x28
 #define       IS7x0_LCR_PARZERO    0x38
-#define     IS7x0_LCR_STOPBIT    0x04
+#define     IS7x0_LCR_STOP2      0x04
 #define     IS7x0_LCR_WLENMSK    0x03
 #define       IS7x0_LCR_WLEN5      0x00
 #define       IS7x0_LCR_WLEN6      0x01
@@ -87,3 +92,7 @@
 #define     IS7x0_LSR_PERR       0x04
 #define     IS7x0_LSR_OERR       0x02
 #define     IS7x0_LSR_DATARCV    0x01
+
+// Bits in EFR
+#define     IS7x0_EFR_ENH        0x10
+

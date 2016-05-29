@@ -921,3 +921,11 @@ void taskTransponder(void)
     }
 }
 #endif
+
+#ifdef I2CSERIAL
+extern void nxpSerialPoller(void);
+void taskI2CSerial(void)
+{
+    nxpSerialPoller();
+}
+#endif

@@ -38,6 +38,7 @@ void taskTelemetry(void);
 void taskLedStrip(void);
 void taskTransponder(void);
 void taskSystem(void);
+void taskI2CSerial(void);
 
 cfTask_t cfTasks[TASK_COUNT] = {
     [TASK_SYSTEM] = {
@@ -170,6 +171,15 @@ cfTask_t cfTasks[TASK_COUNT] = {
         .taskFunc = taskLedStrip,
         .desiredPeriod = 1000000 / 100,         // 100 Hz, every 10 ms
         .staticPriority = TASK_PRIORITY_IDLE,
+    },
+#endif
+
+#ifdef I2CSERIAL
+    [TASK_I2CSERIAL] = {
+        .taskName = "I2CSERIAL",
+        .taskFunc = taskI2CSerial,
+        .desiredPeriod = 1000000 / 100,         // 100 Hz should be enough to flush up to 115 bytes @ 115200 baud
+        .staticPriority = TASK_PRIORITY_LOW,
     },
 #endif
 };

@@ -77,6 +77,9 @@ typedef enum {
 #ifdef TRANSPONDER
     TASK_TRANSPONDER,
 #endif
+#ifdef I2CSERIAL
+    TASK_I2CSERIAL,
+#endif
 
     /* Count of real tasks */
     TASK_COUNT,
