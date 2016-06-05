@@ -47,15 +47,14 @@
 // Bits in FCR
 #define     IS7x0_FCR_RXTRG_SFT  6
 #define     IS7x0_FCR_TXTRG_SFT  4
-#define     IS7x0_FCR_TXFRST     0x04
-#define     IS7x0_FCR_RXFRST     0x02
-#define     IS7x0_FCR_FIFOEN     0x01
+#define     IS7x0_FCR_TXFIFO_RST 0x04
+#define     IS7x0_FCR_RXFIFO_RST 0x02
+#define     IS7x0_FCR_FIFO_EN    0x01
 
 // Bits in IIR
 #define     IS7x0_IIR_FIFOEN7    0x80
 #define     IS7x0_IIR_FIFOEN6    0x40
 #define     IS7x0_IIR_INTPRIMSK  0x3E
-#define     IS7x0_IIR_INTPRISFT  1
 #define     IS7x0_IIR_INTSTAT    0x01
 
 // Bits in LCR
@@ -79,7 +78,7 @@
 #define     IS7x0_MCR_IRDAEN     0x40
 #define     IS7x0_MCR_XONANY     0x20
 #define     IS7x0_MCR_LOOPBACK   0x10
-#define     IS7x0_MCR_TCRTLREN   0x04
+#define     IS7x0_MCR_TCRTLR_EN  0x04
 #define     IS7x0_MCR_RTS        0x02
 #define     IS7x0_MCR_DTR        0x01
 
@@ -92,6 +91,10 @@
 #define     IS7x0_LSR_PERR       0x04
 #define     IS7x0_LSR_OERR       0x02
 #define     IS7x0_LSR_DATARCV    0x01
+
+// Bits in TLR
+#define     IS7x0_TLR_RX_SFT     4
+#define     IS7x0_TLR_TX_SFT     0
 
 // Bits in EFR
 #define     IS7x0_EFR_ENH        0x10

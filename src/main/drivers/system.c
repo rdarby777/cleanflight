@@ -80,6 +80,16 @@ static void extiHandler(IRQn_Type irqn)
 
 }
 
+void EXTI1_IRQHandler(void)
+{
+    extiHandler(EXTI1_IRQn);
+}
+
+void EXTI4_IRQHandler(void)
+{
+    extiHandler(EXTI4_IRQn);
+}
+
 void EXTI15_10_IRQHandler(void)
 {
     extiHandler(EXTI15_10_IRQn);

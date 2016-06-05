@@ -43,7 +43,9 @@
 #include "drivers/serial_usb_vcp.h"
 #endif
 
+#if defined(USE_NXPSERIAL1) || defined(USE_NXPSERIAL2)
 #include "drivers/serial_nxp7x0.h"
+#endif
 
 #include "io/serial.h"
 #include "serial_cli.h"
@@ -363,15 +365,15 @@ serialPort_t *openSerialPort(
 
         case SERIAL_PORT_NXPSERIAL1:
             serialPort = openNXPSerial(NXPSERIAL1, callback, baudRate, options);
-            serialSetMode(serialPort, mode);
+            if (serialPort) // External device may fail to initialize
+                serialSetMode(serialPort, mode);
             break;
 
-#if 0
         case SERIAL_PORT_NXPSERIAL2:
             serialPort = openNXPSerial(NXPSERIAL2, callback, baudRate, options);
-            serialSetMode(serialPort, mode);
+            if (serialPort) // External device may fail to initialize
+                serialSetMode(serialPort, mode);
             break;
-#endif
 
         default:
             break;

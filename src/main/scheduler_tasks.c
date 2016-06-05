@@ -178,8 +178,8 @@ cfTask_t cfTasks[TASK_COUNT] = {
     [TASK_I2CSERIAL] = {
         .taskName = "I2CSERIAL",
         .taskFunc = taskI2CSerial,
-        //.desiredPeriod = 1000000 / 100,         // 100 Hz should be enough to flush up to 115 bytes @ 115200 baud
-        .desiredPeriod = 1000,
+        .desiredPeriod = 1000000 / 100,         // 100 Hz should be enough to flush up to 115 bytes @ 115200 baud
+        //.desiredPeriod = 1000,
         .staticPriority = TASK_PRIORITY_LOW,
     },
 #endif
