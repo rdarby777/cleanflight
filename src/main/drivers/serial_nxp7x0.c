@@ -53,6 +53,8 @@ typedef struct nxpSerial_s {
     uint8_t          addr;
     uint8_t          chan;
     uint32_t         freq;
+
+    uint8_t          fcr; // FCR soft copy
 } nxpSerial_t;
 
 extern nxpSerial_t nxpSerialPorts[];
@@ -270,10 +272,10 @@ nxpProbe(uint8_t addr, uint8_t chan)
 
     // Wait until THR and TSR to go empty.
 
-    if (!(lsr & IS7x0_LSR_THRTSREMPTY)) {
+    if (!(lsr & IS7x0_LSR_TXEMPTY)) {
             delay(10);
             nxpi2cRead(addr, chan, IS7x0_REG_LSR, 1, &lsr);
-            if (!(lsr & IS7x0_LSR_THRTSREMPTY))
+            if (!(lsr & IS7x0_LSR_TXEMPTY))
                 return false;
     }
 
@@ -388,6 +390,8 @@ nxpFIFOEnable(nxpSerial_t *nxp)
     fcr |= IS7x0_FCR_TXFIFO_RST|IS7x0_FCR_RXFIFO_RST|IS7x0_FCR_FIFO_EN;
 
     nxpWrite(nxp, IS7x0_REG_FCR, fcr);
+
+    nxp->fcr = fcr;
 }
 
 static
@@ -609,23 +613,22 @@ void nxpSerialPoller(void)
     static uint8_t rxlvl = 0;
     int rxroom;
     int rxburst;
-    int rxlen;
+    static int rxlen;
 
     static uint8_t txlvl = 0;
     int txavail;
     int txburst;
     int txlen;
 
-    static uint32_t polls = 0;
+    static uint32_t poll_denom = 0;
 
-#if 0
-    // Test port connection
-    if ((++polls % 100) < 50)
-        digitalHi(GPIOB, Pin_4);
-    else
-        digitalLo(GPIOB, Pin_4);
-#endif
+    uint8_t iir;
 
+    nxp = &nxpSerialPorts[0];
+
+    // XXX Should not use independent port activeness to decide handle INTs.
+    if (!nxp->active)
+        return;
 
 #if 0
     // Test interrupt
@@ -637,24 +640,49 @@ void nxpSerialPoller(void)
     }
 #endif
 
-    if (!nxpInterrupted)
-        return;
+    // Service the port if:
+    // (1) The slave interrupted.
+    // (2) There are leftover char in slave's rx fifo.
+    // (3) There are char to send in tx buffer.
 
-    nxpInterrupted = false;
+    if (nxpInterrupted) {
+        nxpInterrupted = false;
+        digitalLo(GPIOB, Pin_4);
+        nxpRead(nxp, IS7x0_REG_IIR, 1, &iir);
+        if ((iir & IS7x0_IIR_INTSTAT) == 0) {
+            switch (iir & IS7x0_IIR_INTMSK) {
+            case IS7x0_IIR_RXTIMO:   // RX chars below trigger are available
+            case IS7x0_IIR_RHR:      // RX chars above trigger are available
+                // Update the rxlvl
+                nxpRead(nxp, IS7x0_REG_RXLVL, 1, &rxlvl);
+                break;
 
-    digitalLo(GPIOB, Pin_4);
+            case IS7x0_IIR_THR:      // TX fifo ready for more queuing
+                // Update the txlvl
+                nxpRead(nxp, IS7x0_REG_TXLVL, 1, &txlvl);
+                break;
 
-    nxp = &nxpSerialPorts[0];
+            case IS7x0_IIR_LINESTAT:
+                // Hared case here: there is at least one char
+                // with line error, but we don't know which.
+                // If rxlvl is non-zero (left over from last service),
+                // wer can assume #rxlvl chars are error free.
+                // To salvage ththee valid chars, we have to read chars in the
+                // fifo one by one  with associated LSR, which is a pain.
 
-    if (!nxp->active)
-        return;
+                // For now, just reset the RX FIFO, for KISS.
+                // We can handle the safe #rxlvl chars when the code is mature.
+                nxpWrite(nxp, IS7x0_REG_FCR, nxp->fcr & ~IS7x0_FCR_TXFIFO_RST);
+                break;
 
-    uint8_t iir;
-    nxpRead(nxp, IS7x0_REG_IIR, 1, &iir);
+            default: 
+                break;
+            }
+        }
+    } else {
+        nxpRead(nxp, IS7x0_REG_IIR, 1, &iir);
+    }
 
-#ifdef notyet
-    // Examine the IIR, handle conditions, ...
-#endif
 
     // If there's a room in rxBuf, try to read from RX FIFO.
     // Limit single transfer to MIN(rxroom, rxfifolevel, maxfrag).
@@ -662,23 +690,24 @@ void nxpSerialPoller(void)
     // of the physical buffer (can't wrap around in a burst transfer).
 
     rxroom = rxBufferRoom(nxp->port);
-    rxburst = rxBufferBurstLimit(nxp->port);
+
+    debug[0] = rxroom;
 
     if (rxroom) {
-        // See if there's enough data left over from last transfer.
-        // If not, check the rx fifo level again.
-
-        if (rxlvl < NXPSERIAL_MAX_RXFRAG)
-            nxpRead(nxp, IS7x0_REG_RXLVL, 1, &rxlvl);
-
         if (rxlvl) {
             rxlen = (rxroom < rxlvl) ? rxroom : rxlvl;
 
             if (rxlen > NXPSERIAL_MAX_RXFRAG)
                 rxlen = NXPSERIAL_MAX_RXFRAG;
 
+            rxburst = rxBufferBurstLimit(nxp->port);
+
             if (rxlen > rxburst)
                 rxlen = rxburst;
+
+    debug[1] = rxlvl;
+    debug[2] = rxlen;
+    debug[3] = rxburst;
 
             nxpRead(nxp, IS7x0_REG_RHR, rxlen,
                     &(nxp->port.rxBuffer[nxp->port.rxBufferHead]));
@@ -686,14 +715,20 @@ void nxpSerialPoller(void)
             nxp->port.rxBufferHead = (nxp->port.rxBufferHead + rxlen)
                     % nxp->port.rxBufferSize;
 
+            {
+                uint8_t rxlvldebug;
+                nxpRead(nxp, IS7x0_REG_RXLVL, 1, &rxlvldebug);
+                nxpRead(nxp, IS7x0_REG_IIR, 1, &iir);
+            }
+
             rxlvl -= rxlen;
         }
     }
 
-    if (rxBufferLen(nxp->port) && nxp->port.callback) {
-        int rxavail;
+    int rxavail;
+
+    if ((rxavail = rxBufferLen(nxp->port)) && nxp->port.callback) {
         uint8_t ch;
-        rxavail = rxBufferLen(nxp->port);
         while (rxavail--) {
             ch = nxp->port.rxBuffer[nxp->port.rxBufferTail];
             nxp->port.rxBufferTail = (nxp->port.rxBufferTail + 1)
@@ -734,6 +769,7 @@ void nxpSerialPoller(void)
             txlvl -= txlen;
         }
     }
+
 }
 
 const struct serialPortVTable nxpSerialVTable[] = {

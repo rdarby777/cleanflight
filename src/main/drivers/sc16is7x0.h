@@ -1,38 +1,38 @@
 // NXP SC16IS7{4,5,6}0
 
-#define     IS7x0_REG_RHR        0x00
-#define     IS7x0_REG_THR        0X00
-#define     IS7x0_REG_IER        0X01
-#define     IS7x0_REG_FCR        0X02
-#define     IS7x0_REG_IIR        0X02
-#define     IS7x0_REG_LCR        0X03
-#define     IS7x0_REG_MCR        0X04
-#define     IS7x0_REG_LSR        0X05
-#define     IS7x0_REG_MSR        0X06
-#define     IS7x0_REG_SPR        0X07
-#define     IS7x0_REG_TCR        0X06
-#define     IS7x0_REG_TLR        0X07
-#define     IS7x0_REG_TXLVL      0X08
-#define     IS7x0_REG_RXLVL      0X09
-#define     IS7x0_REG_IODIR      0X0A
-#define     IS7x0_REG_IOSTATE    0X0B
-#define     IS7x0_REG_IOINTENA   0X0C
-#define     IS7x0_REG_IOCONTROL  0X0E
-#define     IS7x0_REG_EFCR       0X0F
+#define     IS7x0_REG_RHR        0x00   // R   00
+#define     IS7x0_REG_THR        0X00   // W   00
+#define     IS7x0_REG_IER        0X01   // R/W 08
+#define     IS7x0_REG_FCR        0X02   // W   10
+#define     IS7x0_REG_IIR        0X02   // R   10
+#define     IS7x0_REG_LCR        0X03   // R/W 18
+#define     IS7x0_REG_MCR        0X04   // R/W 20
+#define     IS7x0_REG_LSR        0X05   // R   28
+#define     IS7x0_REG_MSR        0X06   // R   30
+#define     IS7x0_REG_SPR        0X07   // R/W 38
+#define     IS7x0_REG_TCR        0X06   // R/W 30
+#define     IS7x0_REG_TLR        0X07   // R/W 38
+#define     IS7x0_REG_TXLVL      0X08   // R   40
+#define     IS7x0_REG_RXLVL      0X09   // R   48
+#define     IS7x0_REG_IODIR      0X0A   // R/W 50
+#define     IS7x0_REG_IOSTATE    0X0B   // R/W 58
+#define     IS7x0_REG_IOINTENA   0X0C   // R/W 60
+#define     IS7x0_REG_IOCONTROL  0X0E   // R/W 70
+#define     IS7x0_REG_EFCR       0X0F   // R/W 78
 
 // Divisor registers
 // Can only be accessed when LCR[7] (IS7x0_LCR_DIVLATEN) = 1 and LCR != 0xbf
-#define     IS7x0_REG_DLL        0x00
-#define     IS7x0_REG_DLH        0X01
+#define     IS7x0_REG_DLL        0x00   // R/W 00
+#define     IS7x0_REG_DLH        0X01   // R/W 08
 
 // Enhanced register set
 // Can only be accessed when LCR == 0xbf
 
-#define     IS7x0_REG_EFR        0X02
-#define     IS7x0_REG_XON1       0X04
-#define     IS7x0_REG_XON2       0X05
-#define     IS7x0_REG_XOFF1      0X06
-#define     IS7x0_REG_XOFF2      0X07
+#define     IS7x0_REG_EFR        0X02   // R/W
+#define     IS7x0_REG_XON1       0X04   // R/W
+#define     IS7x0_REG_XON2       0X05   // R/W
+#define     IS7x0_REG_XOFF1      0X06   // R/W
+#define     IS7x0_REG_XOFF2      0X07   // R/W
 
 // Bits in IER
 #define     IS7x0_IER_CTS        0X80
@@ -54,8 +54,16 @@
 // Bits in IIR
 #define     IS7x0_IIR_FIFOEN7    0x80
 #define     IS7x0_IIR_FIFOEN6    0x40
-#define     IS7x0_IIR_INTPRIMSK  0x3E
+#define     IS7x0_IIR_INTMSK     0x3E
 #define     IS7x0_IIR_INTSTAT    0x01
+#define       IS7x0_IIR_LINESTAT   0x06
+#define       IS7x0_IIR_RXTIMO     0x0C
+#define       IS7x0_IIR_RHR        0x04
+#define       IS7x0_IIR_THR        0x02
+#define       IS7x0_IIR_MODEMSTAT  0x00
+#define       IS7x0_IIR_IOPINS     0x30
+#define       IS7x0_IIR_XOFF       0x10
+#define       IS7x0_IIR_CTSRTS     0x20
 
 // Bits in LCR
 #define     IS7x0_LCR_DIVLATEN   0x80
@@ -83,14 +91,14 @@
 #define     IS7x0_MCR_DTR        0x01
 
 // Bits in LSR
-#define     IS7x0_LSR_FIFOERR    0x80
-#define     IS7x0_LSR_THRTSREMPTY 0x40
-#define     IS7x0_LSR_THREMPTY   0x20
-#define     IS7x0_LSR_BRKINT     0x10
-#define     IS7x0_LSR_FERR       0x08
-#define     IS7x0_LSR_PERR       0x04
-#define     IS7x0_LSR_OERR       0x02
-#define     IS7x0_LSR_DATARCV    0x01
+#define     IS7x0_LSR_FIFOERR    0x80   // At least one char with error
+#define     IS7x0_LSR_TXEMPTY    0x40   // THR and TSR empty
+#define     IS7x0_LSR_THREMPTY   0x20   // THR empty
+#define     IS7x0_LSR_BRKINT     0x10   // Break interrupt
+#define     IS7x0_LSR_FERR       0x08   // Framing Error
+#define     IS7x0_LSR_PERR       0x04   // Parity Error
+#define     IS7x0_LSR_OERR       0x02   // Overrun Error
+#define     IS7x0_LSR_DATAINRCVR 0x01	// At least one char in RX FIFO
 
 // Bits in TLR
 #define     IS7x0_TLR_RX_SFT     4
