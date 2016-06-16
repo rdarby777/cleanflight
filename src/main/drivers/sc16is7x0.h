@@ -55,7 +55,6 @@
 #define     IS7x0_IIR_FIFOEN7    0x80
 #define     IS7x0_IIR_FIFOEN6    0x40
 #define     IS7x0_IIR_INTMSK     0x3E
-#define     IS7x0_IIR_INTSTAT    0x01
 #define       IS7x0_IIR_LINESTAT   0x06
 #define       IS7x0_IIR_RXTIMO     0x0C
 #define       IS7x0_IIR_RHR        0x04
@@ -64,6 +63,7 @@
 #define       IS7x0_IIR_IOPINS     0x30
 #define       IS7x0_IIR_XOFF       0x10
 #define       IS7x0_IIR_CTSRTS     0x20
+#define     IS7x0_IIR_INTSTAT    0x01
 
 // Bits in LCR
 #define     IS7x0_LCR_DIVLATEN   0x80
