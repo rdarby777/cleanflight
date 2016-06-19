@@ -38,8 +38,16 @@
             nxpi2cWriteBuffer((nxp)->addr, (nxp)->chan, reg, n, buf)
 
 #define NXPSERIAL_MAX_RXFRAG 16
-#define NXPSERIAL_MAX_TXFRAG 16
+#define NXPSERIAL_MAX_TXFRAG 16 
 
+int max_rxfrag = NXPSERIAL_MAX_RXFRAG;
+int max_txfrag = NXPSERIAL_MAX_TXFRAG;
+
+// 16B at 100Hz service interval = 16*100 = 1.6KB/sec = 16kbps
+// On 800KHz bus, 1KHz slot is 800 bits = 88 bytes
+// 0x68 read = addr68+reg43+addr+6datar = 9 bytes
+// 0x68 read = addr68+reg3b+addr+6datar = 9 bytes
+ 
 typedef struct nxpSerial_s {
     serialPort_t     port;    // Must be the first
     volatile uint8_t rxBuf[NXPSERIAL_BUFFER_SIZE];
@@ -123,11 +131,13 @@ void nxpSerial_EXTI_Handler(void)
         return;
     }
 
-//digitalHi(GPIOB, Pin_4);
+digitalHi(GPIOB, Pin_5);
 
     EXTI_ClearITPendingBit(nxpIntExtiConfig.exti_line);
 
     nxpInterrupted = true;
+
+digitalLo(GPIOB, Pin_5);
 }
 
 void nxpSerialConfigureEXTI(void)
@@ -207,6 +217,13 @@ LEDgpio.speed = Speed_2MHz;
 LEDgpio.mode = Mode_Out_PP;
 gpioInit(GPIOB, &LEDgpio);
 digitalLo(GPIOB, Pin_4);
+
+gpio_config_t ZEDgpio;
+ZEDgpio.pin = Pin_5;
+ZEDgpio.speed = Speed_2MHz;
+ZEDgpio.mode = Mode_Out_PP;
+gpioInit(GPIOB, &ZEDgpio);
+digitalLo(GPIOB, Pin_5);
 }
 
     gpio.pin = nxpIntExtiConfig.gpioPin;
@@ -483,6 +500,14 @@ serialPort_t *openNXPSerial(
 
     // nxp->active = false; // It's in the initializer
 
+    // Device tree examples:
+    //   twserial0 at i2c1 addr 0x4c chan 0 type nxp750 irq 4
+    //   twserial1 at i2c1 addr 0x4d chan 0 type nxp750 irq 4
+    //   twserial2 at i2c1 addr 0x4e chan 0 type nxp762 irq 4
+    //   twserial3 at i2c1 addr 0x4e chan 1 type nxp762 irq 4
+    //   twserial4 at i2c1 addr 0x4f chan 0 type twub irq 10
+    //   twserial4 at i2c1 addr 0x50 chan 0 type twub irq 10
+
     if (portIndex == 0) {
         // Switch Science BOB
         // Should obtain from cli variables
@@ -490,20 +515,17 @@ serialPort_t *openNXPSerial(
         nxp->addr = 0x4c;
         nxp->chan = 0;
         nxp->freq = 12000000;
-
-        if (!nxpProbe(0x4c, 0) || !nxpReset(0x4c, 0))
-	    return NULL;
-
     } else if (portIndex == 1) {
         // Sparkfun BOB
         // Should obtain from cli variables
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
-        nxp->addr = 0x4c;
+        nxp->addr = 0x4d;
         nxp->chan = 0;
         nxp->freq = 14745600;
-
-        return NULL;
     }
+
+    if (!nxpProbe(nxp->addr, nxp->chan) || !nxpReset(nxp->addr, nxp->chan))
+        return NULL;
 
     nxp->port.vTable = nxpSerialVTable;
     nxp->port.baudRate = baud;
