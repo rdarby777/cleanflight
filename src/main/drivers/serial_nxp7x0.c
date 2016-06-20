@@ -62,8 +62,10 @@ typedef struct nxpSerial_s {
     uint8_t          chan;
     uint32_t         freq;
 
-    uint8_t          fcr; // FCR soft copy
+    uint8_t          rxlvl;
+    uint8_t          txlvl;
 
+    uint8_t          fcr; // FCR soft copy
     uint8_t          iir; // Last IIR read
 } nxpSerial_t;
 
@@ -508,14 +510,14 @@ serialPort_t *openNXPSerial(
     //   twserial4 at i2c1 addr 0x4f chan 0 type twub irq 10
     //   twserial4 at i2c1 addr 0x50 chan 0 type twub irq 10
 
-    if (portIndex == 0) {
+    if (portIndex == 1) {
         // Switch Science BOB
         // Should obtain from cli variables
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
         nxp->addr = 0x4c;
         nxp->chan = 0;
         nxp->freq = 12000000;
-    } else if (portIndex == 1) {
+    } else if (portIndex == 0) {
         // Sparkfun BOB
         // Should obtain from cli variables
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
@@ -535,6 +537,9 @@ serialPort_t *openNXPSerial(
     nxp->nxpSerialPortIndex = portIndex;
 
     resetBuffers(nxp);
+
+    nxp->rxlvl = 0;
+    nxp->txlvl = 0; // Actual value will be read for the 1st TX data
 
     nxpEnableEnhancedFunctions(nxp);
     nxpSetSpeed(nxp);
@@ -635,23 +640,22 @@ void nxpSerialPoller(void)
     // static int scanport = 0; // Should service all ports: MAX_NXPSERIAL_PORTS
     nxpSerial_t *nxp;
 
-    static uint8_t rxlvl = 0;
     int rxroom;
     int rxburst;
     static int rxlen;
 
-    static uint8_t txlvl = 0;
     int txavail;
     int txburst;
     int txlen;
 
     digitalHi(GPIOB, Pin_4);
 
-    nxp = &nxpSerialPorts[0];
+  for (int index = 0 ; index < MAX_NXPSERIAL_PORTS ; index++) {
 
-    // XXX Should not use independent port activeness to decide handle INTs.
+    nxp = &nxpSerialPorts[index];
+
     if (!nxp->active)
-        goto out;
+        continue;
 
     // Interrupt processing policy:
     // The NXP7x0's interrupt is used to reduce the number of polls:
@@ -661,14 +665,12 @@ void nxpSerialPoller(void)
     // (i.e. not interrupting anymore == INT signal is high).
 
     if (nxpInterrupted) {
-        // XXX should check all slaves
-        nxpInterrupted = false;
         nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
     }
 
 //again:;
     if ((nxp->iir & IS7x0_IIR_INTSTAT)
-     && (rxlvl == 0)
+     && (nxp->rxlvl == 0)
      && (txBufferLen(nxp->port) == 0))
         goto out;
 
@@ -676,12 +678,12 @@ void nxpSerialPoller(void)
     case IS7x0_IIR_RXTIMO:   // RX chars below trigger are available
     case IS7x0_IIR_RHR:      // RX chars above trigger are available
         // Update the rxlvl
-        nxpRead(nxp, IS7x0_REG_RXLVL, 1, &rxlvl);
+        nxpRead(nxp, IS7x0_REG_RXLVL, 1, &nxp->rxlvl);
         break;
 
     case IS7x0_IIR_THR:      // TX fifo ready for more queuing
         // Update the txlvl
-        nxpRead(nxp, IS7x0_REG_TXLVL, 1, &txlvl);
+        nxpRead(nxp, IS7x0_REG_TXLVL, 1, &nxp->txlvl);
         break;
 
     case IS7x0_IIR_LINESTAT:
@@ -695,7 +697,7 @@ void nxpSerialPoller(void)
         // For now, just reset the RX FIFO, for KISS.
         // We can handle the safe #rxlvl chars when the code is mature.
         nxpWrite(nxp, IS7x0_REG_FCR, nxp->fcr & ~IS7x0_FCR_TXFIFO_RST);
-        nxpRead(nxp, IS7x0_REG_RXLVL, 1, &rxlvl);
+        nxpRead(nxp, IS7x0_REG_RXLVL, 1, &nxp->rxlvl);
         nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
         // goto again;
         break;
@@ -705,10 +707,10 @@ void nxpSerialPoller(void)
     }
 
 #if 0
-    if (rxlvl) {
-        rxlen = (rxlvl > 8) ? 8 : rxlvl;
+    if (nxp->rxlvl) {
+        rxlen = (nxp->rxlvl > 8) ? 8 : nxp->rxlvl;
 	nxpRead(nxp, IS7x0_REG_RHR, rxlen, dummyBuffer);
-        rxlvl -= rxlen;
+        nxp->rxlvl -= rxlen;
 
         if (nxp->port.callback) {
             int i;
@@ -727,8 +729,8 @@ void nxpSerialPoller(void)
     rxroom = rxBufferRoom(nxp->port);
 
     if (rxroom) {
-        if (rxlvl) {
-            rxlen = (rxroom < rxlvl) ? rxroom : rxlvl;
+        if (nxp->rxlvl) {
+            rxlen = (rxroom < nxp->rxlvl) ? rxroom : nxp->rxlvl;
 
             if (rxlen > NXPSERIAL_MAX_RXFRAG)
                 rxlen = NXPSERIAL_MAX_RXFRAG;
@@ -739,7 +741,6 @@ void nxpSerialPoller(void)
                 rxlen = rxburst;
 
 	    if (rxlen <= 0 || rxlen > NXPSERIAL_MAX_RXFRAG) {
-                debug[2] = rxlen;
                 rxlen = 1;
             }
 
@@ -749,7 +750,7 @@ void nxpSerialPoller(void)
             nxp->port.rxBufferHead = (nxp->port.rxBufferHead + rxlen)
                     % nxp->port.rxBufferSize;
 
-            rxlvl -= rxlen;
+            nxp->rxlvl -= rxlen;
         }
     }
 
@@ -773,13 +774,13 @@ void nxpSerialPoller(void)
         // knowing there is at least old txlvl bytes of space
 	// available for queuing.
 
-        if (txlvl < NXPSERIAL_MAX_TXFRAG)
-            nxpRead(nxp, IS7x0_REG_TXLVL, 1, &txlvl);
+        if (nxp->txlvl < NXPSERIAL_MAX_TXFRAG)
+            nxpRead(nxp, IS7x0_REG_TXLVL, 1, &nxp->txlvl);
 
         txburst = txBufferBurstLimit(nxp->port);
 
-        if (txlvl) {
-            txlen = (txavail < txlvl) ? txavail : txlvl;
+        if (nxp->txlvl) {
+            txlen = (txavail < nxp->txlvl) ? txavail : nxp->txlvl;
 
             if (txlen > NXPSERIAL_MAX_TXFRAG)
                 txlen = NXPSERIAL_MAX_TXFRAG;
@@ -798,17 +799,23 @@ void nxpSerialPoller(void)
             nxp->port.txBufferTail = (nxp->port.txBufferTail + txlen)
                     % nxp->port.txBufferSize;
 
-            txlvl -= txlen;
+            nxp->txlvl -= txlen;
         }
     }
 
     nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
 
 out:;
-    debug[0] = nxp->iir;
-    debug[1] = rxlvl;
+    if (index == 1) {
+        debug[0] = nxp->iir;
+        debug[1] = nxp->rxlvl;
+        debug[2] = rxBufferRoom(nxp->port);
+        debug[3] = rxBufferLen(nxp->port);
+    }
+}
 
     digitalLo(GPIOB, Pin_4);
+    nxpInterrupted = false;
 }
 
 const struct serialPortVTable nxpSerialVTable[] = {
