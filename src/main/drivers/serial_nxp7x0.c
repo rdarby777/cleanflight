@@ -23,6 +23,12 @@
 
 #include "sc16is7x0.h"
 
+//
+// Watch out!!!
+// ATmega328 running at 16MHz can't handle back-to-back WRITEs.
+// @800KHz, 45usec delay is required.
+// 
+
 #define nxpi2cRead(addr, chan, reg, n, buf) \
             i2cRead(addr, ((reg) << 3)|((chan) << 1), n, buf)
 #define nxpi2cWrite(addr, chan, reg, data) \
@@ -30,12 +36,15 @@
 #define nxpi2cWriteBuffer(addr, chan, reg, n, buf) \
             i2cWriteBuffer(addr, ((reg) << 3)|((chan) << 1), n, buf)
 
-#define nxpRead(nxp, reg, n, buf) \
-            nxpi2cRead((nxp)->addr, (nxp)->chan, reg, n, buf)
-#define nxpWrite(nxp, reg, data) \
-            nxpi2cWrite((nxp)->addr, (nxp)->chan, reg, data)
-#define nxpWriteBuffer(nxp, reg, n, buf) \
-            nxpi2cWriteBuffer((nxp)->addr, (nxp)->chan, reg, n, buf)
+#define nxpRead(nxp, reg, n, buf) (\
+            nxpi2cRead((nxp)->addr, (nxp)->chan, reg, n, buf),\
+            (nxp)->bcycle += ((n) + 5))
+#define nxpWrite(nxp, reg, data) (\
+            nxpi2cWrite((nxp)->addr, (nxp)->chan, reg, data),\
+            (nxp)->bcycle += 3)
+#define nxpWriteBuffer(nxp, reg, n, buf) (\
+            nxpi2cWriteBuffer((nxp)->addr, (nxp)->chan, reg, n, buf),\
+            (nxp)->bcycle += ((n) + 2))
 
 #define NXPSERIAL_MAX_RXFRAG 16
 #define NXPSERIAL_MAX_TXFRAG 16 
@@ -60,7 +69,16 @@ typedef struct nxpSerial_s {
 #define NXPSERIAL_BUSTYPE_SPI 1
     uint8_t          addr;
     uint8_t          chan;
+
+    uint8_t          devtype;
+#define NXPSERIAL_DEVTYPE_NONE    0
+#define NXPSERIAL_DEVTYPE_NXP     1 // NXP SC16IS74{0,1},7{5,6}{0,2}
+#define NXPSERIAL_DEVTYPE_UB      2 // UART Bridge
+    uint16_t         apiver;
+
     uint32_t         freq;
+
+    uint32_t         polled;
 
     uint8_t          rxlvl;
     uint8_t          txlvl;
@@ -68,6 +86,8 @@ typedef struct nxpSerial_s {
     uint8_t          iir;       // Last IIR read
     uint8_t          fcr;       // FCR soft copy
     uint8_t          efcr;      // EFCR soft copy
+
+    int              bcycle;
 } nxpSerial_t;
 
 extern nxpSerial_t nxpSerialPorts[];
@@ -215,7 +235,21 @@ void nxpSerialIntExtiInit(void)
             RCC_AHBPeriphClockCmd(nxpIntExtiConfig.gpioAHBPeripherals, ENABLE);
         }
 #endif
+
+    gpio.pin = nxpIntExtiConfig.gpioPin;
+    gpio.speed = Speed_2MHz;
+    //gpio.mode = Mode_IN_FLOATING;
+    //gpio.mode = Mode_Out_PP; // For port connectivity testing
+    gpio.mode = Mode_IPU; // Input with pull-up
+    gpioInit(nxpIntExtiConfig.gpioPort, &gpio);
+
+    nxpSerialConfigureEXTI();
+
+    nxpExtiInitDone = true;
+}
+
 // Interrupt monitoring RC5 (PB4)
+void setupDebugPins(void)
 {
 gpio_config_t LEDgpio;
 RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
@@ -233,16 +267,24 @@ gpioInit(GPIOB, &ZEDgpio);
 digitalLo(GPIOB, Pin_5);
 }
 
-    gpio.pin = nxpIntExtiConfig.gpioPin;
-    gpio.speed = Speed_2MHz;
-    //gpio.mode = Mode_IN_FLOATING;
-    //gpio.mode = Mode_Out_PP; // For port connectivity testing
-    gpio.mode = Mode_IPU; // Input with pull-up
-    gpioInit(nxpIntExtiConfig.gpioPort, &gpio);
+void nxpDebugOFF(void)
+{
+    digitalLo(GPIOB, Pin_4);
+}
 
-    nxpSerialConfigureEXTI();
+void nxpDebugON(void)
+{
+    digitalHi(GPIOB, Pin_4);
+}
 
-    nxpExtiInitDone = true;
+void nxpZEDOFF(void)
+{
+    digitalLo(GPIOB, Pin_5);
+}
+
+void nxpZEDON(void)
+{
+    digitalHi(GPIOB, Pin_5);
 }
 
 static void resetBuffers(nxpSerial_t *nxp)
@@ -260,17 +302,17 @@ static void resetBuffers(nxpSerial_t *nxp)
 
 static
 bool
-nxpReset(uint8_t addr, uint8_t chan)
+nxpResetNXP(nxpSerial_t *nxp)
 {
     uint8_t ioc, lcr, lsr;
 
-    nxpi2cRead(addr, chan, IS7x0_REG_IOCONTROL, 1, &ioc);
-    nxpi2cWrite(addr, chan, IS7x0_REG_IOCONTROL, ioc|(1 << 3));
+    nxpRead(nxp, IS7x0_REG_IOCONTROL, 1, &ioc);
+    nxpWrite(nxp, IS7x0_REG_IOCONTROL, ioc|(1 << 3));
 
-    delay(10);
+    delay(5);  // This is a software reset, so delay can be much shorter.
 
-    if (!nxpi2cRead(addr, chan, IS7x0_REG_LCR, 1, &lcr)
-     || !nxpi2cRead(addr, chan, IS7x0_REG_LSR, 1, &lsr))
+    if (!nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr)
+     || !nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr))
         return false;
 
     if (lcr == 0x1D && (lsr & 0x60) == 0x60)
@@ -281,13 +323,32 @@ nxpReset(uint8_t addr, uint8_t chan)
 
 static
 bool
-nxpProbe(uint8_t addr, uint8_t chan)
+nxpResetUB(nxpSerial_t *nxp)
+{
+    return true;
+}
+
+static
+bool
+nxpReset(nxpSerial_t *nxp)
+{
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP)
+        return nxpResetNXP(nxp);
+    else if (nxp->devtype == NXPSERIAL_DEVTYPE_UB)
+        return nxpResetUB(nxp);
+
+    return false;
+}
+
+static
+bool
+nxpProbeNXP(nxpSerial_t *nxp)
 {
     uint8_t lcr, lsr;
     uint8_t txlvl;
 
-    if (!nxpi2cRead(addr, chan, IS7x0_REG_LCR, 1, &lcr)
-     || !nxpi2cRead(addr, chan, IS7x0_REG_LSR, 1, &lsr))
+    if (!nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr)
+     || !nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr))
         return false;
 
     if (lcr == 0x1D && (lsr & 0x60) == 0x60)
@@ -300,14 +361,14 @@ nxpProbe(uint8_t addr, uint8_t chan)
 
     if (!(lsr & IS7x0_LSR_TXEMPTY)) {
             delay(10);
-            nxpi2cRead(addr, chan, IS7x0_REG_LSR, 1, &lsr);
+            nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr);
             if (!(lsr & IS7x0_LSR_TXEMPTY))
                 return false;
     }
 
     // TX is all empty, TX FIFO Level should be 0x40 (64)
 
-    nxpi2cRead(addr, chan, IS7x0_REG_TXLVL, 1, &txlvl);
+    nxpRead(nxp, IS7x0_REG_TXLVL, 1, &txlvl);
 
     if (txlvl == 64)
         return true;
@@ -315,7 +376,34 @@ nxpProbe(uint8_t addr, uint8_t chan)
     return false;
 }
 
-#define MAX_BAUDRATE 57600
+static
+bool
+nxpProbeUB(nxpSerial_t *nxp)
+{
+    uint8_t id[4];
+
+    if (!nxpRead(nxp, IS7x0_REG_SPR, 4, id))
+        return false;
+
+    if (id[0] == 'U' && id[1] == 'B') {
+        nxp->apiver = (id[2] << 8)|id[3];
+        return true;
+    }
+
+    return false;
+}
+
+static
+bool
+nxpProbe(nxpSerial_t *nxp)
+{
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP)
+        return nxpProbeNXP(nxp);
+    else if (nxp->devtype == NXPSERIAL_DEVTYPE_UB)
+        return nxpProbeUB(nxp);
+
+    return false;
+}
 
 static void nxpSetSpeed(nxpSerial_t *nxp)
 {
@@ -323,8 +411,11 @@ static void nxpSetSpeed(nxpSerial_t *nxp)
     uint32_t prescaler;
     uint32_t baudrate = nxp->port.baudRate;
 
+#if 0
+#define MAX_BAUDRATE 57600
     if (baudrate > MAX_BAUDRATE)
         baudrate = MAX_BAUDRATE;
+#endif
 
     prescaler= 1;
     divisor = (nxp->freq/prescaler)/(baudrate * 16);
@@ -503,31 +594,51 @@ serialPort_t *openNXPSerial(
 
     // nxp->active = false; // It's in the initializer
 
-    // Device tree examples:
-    //   twserial0 at i2c1 addr 0x4c chan 0 type nxp750 irq 4
-    //   twserial1 at i2c1 addr 0x4d chan 0 type nxp750 irq 4
-    //   twserial2 at i2c1 addr 0x4e chan 0 type nxp762 irq 4
-    //   twserial3 at i2c1 addr 0x4e chan 1 type nxp762 irq 4
-    //   twserial4 at i2c1 addr 0x4f chan 0 type twub irq 10
-    //   twserial4 at i2c1 addr 0x50 chan 0 type twub irq 10
+    // Wanna do 'device tree' examples:
+    //   twserial0 at i2c1 addr 0x4c chan 0 type nxp/750 irq 4
+    //   twserial1 at i2c1 addr 0x4d chan 0 type nxp/750 irq 4
+    //   twserial2 at i2c1 addr 0x4e chan 0 type nxp/760 irq 4
+    //   twserial3 at i2c1 addr 0x4e chan 1 type nxp/760 irq 4
+    //   twserial4 at i2c1 addr 0x4f chan 0 type pic irq 10
+    //   twserial4 at i2c1 addr 0x50 chan 0 type pic irq 10
 
+#if 0
     if (portIndex == 1) {
         // Switch Science BOB
         // Should obtain from cli variables
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
+        nxp->devtype = NXPSERIAL_DEVTYPE_NXP;
         nxp->addr = 0x4c;
         nxp->chan = 0;
         nxp->freq = 12000000;
+        nxp->polled = 0;
     } else if (portIndex == 0) {
+setupDebugPins();
         // Sparkfun BOB
         // Should obtain from cli variables
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
+        nxp->devtype = NXPSERIAL_DEVTYPE_NXP;
         nxp->addr = 0x4d;
         nxp->chan = 0;
         nxp->freq = 14745600;
+        nxp->polled = 0;
+    }
+#endif
+
+    if (portIndex == 0) {
+        // Arduino UART bridge
+        // Should obtain from cli variables
+        nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
+        nxp->devtype = NXPSERIAL_DEVTYPE_UB;
+        nxp->addr = 0x19;
+        nxp->chan = 0;
+        nxp->freq = 0;	// Means fixed or don't care
+        nxp->polled = 1;
+setupDebugPins();
+    } else if (portIndex == 1) {
     }
 
-    if (!nxpProbe(nxp->addr, nxp->chan) || !nxpReset(nxp->addr, nxp->chan))
+    if (!nxpProbe(nxp) || !nxpReset(nxp))
         return NULL;
 
     nxp->port.vTable = nxpSerialVTable;
@@ -541,6 +652,8 @@ serialPort_t *openNXPSerial(
 
     nxp->rxlvl = 0;
     nxp->txlvl = 0; // Actual value will be read for the 1st TX data
+
+    nxp->bcycle = 0;
 
     nxpWrite(nxp, IS7x0_REG_IOCONTROL, IS7x0_IOC_RESET);
 
@@ -647,9 +760,22 @@ void nxpSerialSetMode(serialPort_t *instance, portMode_t mode)
     nxpReceiverControl(nxp, ((nxp->port.mode & MODE_RX) == MODE_RX));
 }
 
+void nullFunction(void)
+{
+}
+
+static uint8_t dummytbuf[16];
+static uint8_t dummyrbuf[128];
+static int seq = 0;
+static int dummycount = 0;
+#include "common/printf.h"
+
 void nxpSerialPoller(void)
 {
-    // static int scanport = 0; // Should service all ports: MAX_NXPSERIAL_PORTS
+    int bcycle;
+
+    bool interrupted;
+    static int scanport = 0;
     nxpSerial_t *nxp;
 
     int rxroom;
@@ -660,40 +786,59 @@ void nxpSerialPoller(void)
     int txburst;
     int txlen;
 
-    digitalHi(GPIOB, Pin_4);
+    uint8_t rxqlen;
+
+#if 0
+  if ((++dummycount % 10) == 0) {
+    tfp_sprintf(dummytbuf, "%d\r\n", seq++);
+    if (seq > 9999) seq = 0;
+    i2cWriteBuffer(0x19, IS7x0_REG_THR, 6, dummytbuf);
+
+    delayMicroseconds(40);
+
+    i2cRead(0x19, IS7x0_REG_RXLVL, 1, &rxqlen);
+
+    if (rxqlen > 0) {
+        rxlen = rxqlen > 16 ? 16 : rxqlen;
+        i2cRead(0x19, IS7x0_REG_RHR, rxlen, dummyrbuf);
+    }
+  }
+#endif
+
+    __disable_irq();
+    interrupted = nxpInterrupted;
+    nxpInterrupted = false;
+    __enable_irq();
 
     // Quickly scan the slaves for interrupts
-    __disable_irq();
-    if (nxpInterrupted) {
-        nxpInterrupted = false;
-        __enable_irq();
-        for (int index = 0 ; index < MAX_NXPSERIAL_PORTS ; index++) {
-            nxp = &nxpSerialPorts[index];
 
-            if (!nxp->active)
-                continue;
-
-            nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
-        }
-    } else {
-        __enable_irq();
-    }
-
-    for (int index = 0 ; index < MAX_NXPSERIAL_PORTS ; index++) {
-
-        nxp = &nxpSerialPorts[index];
+    for (int i = 0 ; i < MAX_NXPSERIAL_PORTS ; i++) {
+        nxp = &nxpSerialPorts[i];
 
         if (!nxp->active)
             continue;
 
-        // Interrupt processing policy:
-        // The NXP7x0's interrupt is used to reduce the number of polls:
-        // the slave need not to be polled unless interrupted.
-        // Once interrupted, it will be completely serviced until
-        // IIR[0] (INTSTAT) goes high
-        // (i.e. not interrupting anymore == INT signal is high).
+        nxp->bcycle = 0;
 
-//again:;
+        if (interrupted)
+            nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
+        else if (nxp->polled)
+            nxp->iir = IS7x0_IIR_RXTIMO;
+    }
+
+    bcycle = 0;
+
+    for (int i = 0 ; i < MAX_NXPSERIAL_PORTS ; i++) {
+
+        if (bcycle > 32)
+            break;
+
+        nxp = &nxpSerialPorts[scanport];
+        scanport = (scanport + 1) % MAX_NXPSERIAL_PORTS;
+
+        if (!nxp->active)
+            continue;
+
         if ((nxp->iir & IS7x0_IIR_INTSTAT)
          && (nxp->rxlvl == 0)
          && (txBufferLen(nxp->port) == 0))
@@ -724,40 +869,12 @@ void nxpSerialPoller(void)
             nxpWrite(nxp, IS7x0_REG_FCR, nxp->fcr & ~IS7x0_FCR_TXFIFO_RST);
             nxpRead(nxp, IS7x0_REG_RXLVL, 1, &nxp->rxlvl);
             nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
-            // goto again;
             break;
 
         default: 
             break;
         }
 
-#if 0
-        if (nxp->rxlvl) {
-            rxlen = (nxp->rxlvl > 8) ? 8 : nxp->rxlvl;
-	    nxpRead(nxp, IS7x0_REG_RHR, rxlen, dummyBuffer);
-            nxp->rxlvl -= rxlen;
-
-            if (nxp->port.callback) {
-                int i;
-                for (i = 0 ; i < rxlen ; i++) {
-                    (*nxp->port.callback)(dummyBuffer[i]);
-                }
-            }
-        }
-#endif
-
-#if 0
-        // Debugging receiver: Discard RX FIFO.
-        uint8_t dummyBuffer[256];
-
-        if (nxp->rxlvl) {
-            rxlen = nxp->rxlvl;
-            if (rxlen > NXPSERIAL_MAX_RXFRAG)
-                rxlen = NXPSERIAL_MAX_RXFRAG;
-            nxpRead(nxp, IS7x0_REG_RHR, rxlen, dummyBuffer);
-            nxp->rxlvl -= rxlen;
-        }
-#else
         // If there's a room in rxBuf, try to read from RX FIFO.
         // Limit single transfer to MIN(rxroom, rxfifolevel, maxfrag).
         // Actual transfer size will further be limited by the end
@@ -791,7 +908,6 @@ void nxpSerialPoller(void)
                 nxp->rxlvl -= rxlen;
             }
         }
-#endif
 
         int rxavail;
 
@@ -807,7 +923,7 @@ void nxpSerialPoller(void)
 
         // XXX Take rxlen into account for txlen calculation.
 
-        if ((txavail = txBufferLen(nxp->port)) != 0) {
+        if (((txavail = txBufferLen(nxp->port)) != 0) && bcycle < 32) {
 
             // Can pump out without retrieving a new txlvl value,
             // knowing there is at least old txlvl bytes of space
@@ -842,18 +958,23 @@ void nxpSerialPoller(void)
             }
         }
 
-        nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
-
 out:;
-        if (index == 1) {
-            debug[0] = nxp->iir;
-            debug[1] = nxp->rxlvl;
-            debug[2] = rxBufferRoom(nxp->port);
-            debug[3] = rxBufferLen(nxp->port);
+        if (!nxp->polled)
+            nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
+
+        int index = nxp - nxpSerialPorts;
+        if (index < 2) {
+        	if (nxp->bcycle > debug[index])
+			debug[index] = nxp->bcycle;
         }
+
+        bcycle += nxp->bcycle;
     }
 
-    digitalLo(GPIOB, Pin_4);
+    if (bcycle > debug[2])
+        debug[2] = bcycle;
+
+    //digitalLo(GPIOB, Pin_4);
 }
 
 const struct serialPortVTable nxpSerialVTable[] = {
