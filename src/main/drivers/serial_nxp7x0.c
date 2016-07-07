@@ -71,9 +71,9 @@ typedef struct nxpSerial_s {
     uint8_t          chan;
 
     uint8_t          devtype;
-#define NXPSERIAL_DEVTYPE_NONE    0
-#define NXPSERIAL_DEVTYPE_NXP     1 // NXP SC16IS74{0,1},7{5,6}{0,2}
-#define NXPSERIAL_DEVTYPE_UB      2 // UART Bridge
+#define NXPSERIAL_DEVTYPE_NONE         0
+#define NXPSERIAL_DEVTYPE_NXP          1 // NXP SC16IS74{0,1},7{5,6}{0,2}
+#define NXPSERIAL_DEVTYPE_MINIMAL      2 // UART Bridge
     uint16_t         apiver;
 
     uint32_t         freq;
@@ -111,7 +111,9 @@ nxpSerial_t nxpSerialPorts[MAX_NXPSERIAL_PORTS] = {
 #define rxBufferBurstLimit(port) ((port).rxBufferSize - (port).rxBufferHead)
 #define txBufferBurstLimit(port) ((port).txBufferSize - (port).txBufferTail)
 
-
+// RC2 (BLUE) = PA1 : IRQ
+// (GREEN) = PB5
+// (YELLOW) = PB4
 // SPRF3
 #if 1
 // RC2 (BLUE) = PA1 : Conflict with PB1 (RC8 Sonar Echo)
@@ -334,7 +336,7 @@ nxpReset(nxpSerial_t *nxp)
 {
     if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP)
         return nxpResetNXP(nxp);
-    else if (nxp->devtype == NXPSERIAL_DEVTYPE_UB)
+    else if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
         return nxpResetUB(nxp);
 
     return false;
@@ -399,7 +401,7 @@ nxpProbe(nxpSerial_t *nxp)
 {
     if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP)
         return nxpProbeNXP(nxp);
-    else if (nxp->devtype == NXPSERIAL_DEVTYPE_UB)
+    else if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
         return nxpProbeUB(nxp);
 
     return false;
@@ -409,7 +411,12 @@ static void nxpSetSpeed(nxpSerial_t *nxp)
 {
     uint32_t divisor;
     uint32_t prescaler;
-    uint32_t baudrate = nxp->port.baudRate;
+    uint32_t baudrate;
+
+    if (nxp->freq == 0)
+        return;  // Fixed or don't care
+
+    baudrate = nxp->port.baudRate;
 
 #if 0
 #define MAX_BAUDRATE 57600
@@ -502,7 +509,7 @@ static void nxpFIFOEnable(nxpSerial_t *nxp)
 {
     uint8_t fcr;
 
-    nxpRead(nxp, IS7x0_REG_FCR, 1, &fcr);
+    //nxpRead(nxp, IS7x0_REG_FCR, 1, &fcr);
 
     fcr |= IS7x0_FCR_TXFIFO_RST|IS7x0_FCR_RXFIFO_RST|IS7x0_FCR_FIFO_EN;
 
@@ -629,11 +636,11 @@ setupDebugPins();
         // Arduino UART bridge
         // Should obtain from cli variables
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
-        nxp->devtype = NXPSERIAL_DEVTYPE_UB;
+        nxp->devtype = NXPSERIAL_DEVTYPE_MINIMAL;
         nxp->addr = 0x19;
         nxp->chan = 0;
         nxp->freq = 0;	// Means fixed or don't care
-        nxp->polled = 1;
+        nxp->polled = 0;
 setupDebugPins();
     } else if (portIndex == 1) {
     }
@@ -788,7 +795,10 @@ void nxpSerialPoller(void)
 
     uint8_t rxqlen;
 
+    digitalHi(GPIOB, Pin_4);
+
 #if 0
+  // Arduino-UB
   if ((++dummycount % 10) == 0) {
     tfp_sprintf(dummytbuf, "%d\r\n", seq++);
     if (seq > 9999) seq = 0;
@@ -867,6 +877,7 @@ void nxpSerialPoller(void)
             // For now, just reset the RX FIFO, for KISS.
             // We can handle the safe #rxlvl chars when the code is mature.
             nxpWrite(nxp, IS7x0_REG_FCR, nxp->fcr & ~IS7x0_FCR_TXFIFO_RST);
+            delayMicroseconds(50); // XXX
             nxpRead(nxp, IS7x0_REG_RXLVL, 1, &nxp->rxlvl);
             nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
             break;
@@ -974,7 +985,7 @@ out:;
     if (bcycle > debug[2])
         debug[2] = bcycle;
 
-    //digitalLo(GPIOB, Pin_4);
+    digitalLo(GPIOB, Pin_4);
 }
 
 const struct serialPortVTable nxpSerialVTable[] = {
