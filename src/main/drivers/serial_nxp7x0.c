@@ -21,13 +21,15 @@
 #include "serial.h"
 #include "serial_nxp7x0.h"
 
-#include "sc16is7x0.h"
+#include "sc16is7x0.h"    // NXP SC16IS7xx registers
+#include "ubreg.h"        // I2C/UART Bridge specific registers
 
 //
 // Watch out!!!
 // ATmega328 running at 16MHz can't handle back-to-back WRITEs.
 // @800KHz, 45usec delay is required.
 // 
+#define UBdelayMicroseconds(n) delayMicroseconds(n)
 
 #define nxpi2cRead(addr, chan, reg, n, buf) \
             i2cRead(addr, ((reg) << 3)|((chan) << 1), n, buf)
@@ -76,9 +78,13 @@ typedef struct nxpSerial_s {
 #define NXPSERIAL_DEVTYPE_MINIMAL      2 // UART Bridge
     uint16_t         apiver;
 
-    uint32_t         freq;
+    int32_t         freq;      // -1:don't care, 0:baudrate/150, otherwise::crystal
+#define UB_FREQ_DONTCARE   -1
+#define UB_FREQ_BAUDx150    0
 
-    uint32_t         polled;
+    int8_t           polled;
+
+    //uint8_t          cycletime; // Average time per byte
 
     uint8_t          rxlvl;
     uint8_t          txlvl;
@@ -93,14 +99,40 @@ typedef struct nxpSerial_s {
 extern nxpSerial_t nxpSerialPorts[];
 extern const struct serialPortVTable nxpSerialVTable[];
 
+#ifdef USE_NXPSERIAL1
+#define MAX_NXPSERIAL_PORTS 1
+#endif
+#ifdef USE_NXPSERIAL2
+#undef MAX_NXPSERIAL_PORTS
+#define MAX_NXPSERIAL_PORTS 2
+#endif
+#ifdef USE_NXPSERIAL3
+#undef MAX_NXPSERIAL_PORTS
+#define MAX_NXPSERIAL_PORTS 3
+#endif
+#ifdef USE_NXPSERIAL4
+#undef MAX_NXPSERIAL_PORTS
 #define MAX_NXPSERIAL_PORTS 4
+#endif
+#ifdef USE_NXPSERIAL5
+#undef MAX_NXPSERIAL_PORTS
+#define MAX_NXPSERIAL_PORTS 5
+#endif
+#ifdef USE_NXPSERIAL6
+#undef MAX_NXPSERIAL_PORTS
+#define MAX_NXPSERIAL_PORTS 6
+#endif
+#ifdef USE_NXPSERIAL7
+#undef MAX_NXPSERIAL_PORTS
+#define MAX_NXPSERIAL_PORTS 7
+#endif
+#ifdef USE_NXPSERIAL8
+#undef MAX_NXPSERIAL_PORTS
+#define MAX_NXPSERIAL_PORTS 8
+#endif
 
-nxpSerial_t nxpSerialPorts[MAX_NXPSERIAL_PORTS] = {
-    { .active = false, },
-    { .active = false, },
-    { .active = false, },
-    { .active = false, },
-};
+static bool nxpSerialPortsInit = false;
+nxpSerial_t nxpSerialPorts[MAX_NXPSERIAL_PORTS];
 
 #define rxBufferLen(port) ((((port).rxBufferHead - (port).rxBufferTail)) & ((port).rxBufferSize - 1))
 #define txBufferLen(port) ((((port).txBufferHead - (port).txBufferTail)) & ((port).txBufferSize - 1))
@@ -110,6 +142,8 @@ nxpSerial_t nxpSerialPorts[MAX_NXPSERIAL_PORTS] = {
 
 #define rxBufferBurstLimit(port) ((port).rxBufferSize - (port).rxBufferHead)
 #define txBufferBurstLimit(port) ((port).txBufferSize - (port).txBufferTail)
+
+volatile bool nxpInterrupted = false;
 
 // RC2 (BLUE) = PA1 : IRQ
 // (GREEN) = PB5
@@ -150,23 +184,19 @@ extiConfig_t nxpIntExtiConfig = {
     .exti_irqn           = I2CSERIAL_INT_IRQN,
 };
 
-volatile bool nxpInterrupted = false;
-
 void nxpSerial_EXTI_Handler(void)
 {
     if (EXTI_GetITStatus(nxpIntExtiConfig.exti_line) == RESET) {
         return;
     }
 
-    // Debugging
-    digitalHi(GPIOB, Pin_5);
+    // digitalHi(GPIOB, Pin_5); // Debugging
 
     EXTI_ClearITPendingBit(nxpIntExtiConfig.exti_line);
 
     nxpInterrupted = true;
 
-    // Debugging
-    digitalLo(GPIOB, Pin_5);
+    // digitalLo(GPIOB, Pin_5); // Debugging
 }
 
 void nxpSerialConfigureEXTI(void)
@@ -187,14 +217,6 @@ void nxpSerialConfigureEXTI(void)
 
 #ifdef STM32F303xC
     gpioExtiLineConfig(nxpIntExtiConfig.exti_port_source, nxpIntExtiConfig.exti_pin_source);
-#endif
-
-#if 0
-    // Test GPIO status
-    uint8_t status = GPIO_ReadInputDataBit(nxpIntExtiConfig.gpioPort, nxpIntExtiConfig.gpioPin);
-    if (status) {
-        return;
-    }
 #endif
 
     registerExtiCallbackHandler(nxpIntExtiConfig.exti_irqn, nxpSerial_EXTI_Handler);
@@ -250,41 +272,41 @@ void nxpSerialIntExtiInit(void)
     nxpExtiInitDone = true;
 }
 
-// Interrupt monitoring RC5 (PB4)
-void setupDebugPins(void)
+// Litte tools for debugging/monitoring
+static void nxpDebugSetup(void)
 {
-gpio_config_t LEDgpio;
-RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
-LEDgpio.pin = Pin_4;
-LEDgpio.speed = Speed_2MHz;
-LEDgpio.mode = Mode_Out_PP;
-gpioInit(GPIOB, &LEDgpio);
-digitalLo(GPIOB, Pin_4);
+    gpio_config_t LEDgpio;
+    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
+    LEDgpio.pin = Pin_4;
+    LEDgpio.speed = Speed_2MHz;
+    LEDgpio.mode = Mode_Out_PP;
+    gpioInit(GPIOB, &LEDgpio);
+    digitalLo(GPIOB, Pin_4);
 
-gpio_config_t ZEDgpio;
-ZEDgpio.pin = Pin_5;
-ZEDgpio.speed = Speed_2MHz;
-ZEDgpio.mode = Mode_Out_PP;
-gpioInit(GPIOB, &ZEDgpio);
-digitalLo(GPIOB, Pin_5);
+    gpio_config_t ZEDgpio;
+    ZEDgpio.pin = Pin_5;
+    ZEDgpio.speed = Speed_2MHz;
+    ZEDgpio.mode = Mode_Out_PP;
+    gpioInit(GPIOB, &ZEDgpio);
+    digitalLo(GPIOB, Pin_5);
 }
 
-void nxpDebugOFF(void)
+static void nxpDebugOFF(void)
 {
     digitalLo(GPIOB, Pin_4);
 }
 
-void nxpDebugON(void)
+static void nxpDebugON(void)
 {
     digitalHi(GPIOB, Pin_4);
 }
 
-void nxpZEDOFF(void)
+static void nxpZEDOFF(void)
 {
     digitalLo(GPIOB, Pin_5);
 }
 
-void nxpZEDON(void)
+static void nxpZEDON(void)
 {
     digitalHi(GPIOB, Pin_5);
 }
@@ -390,6 +412,10 @@ nxpProbeUB(nxpSerial_t *nxp)
     if (id[0] == 'U' && id[1] == 'B') {
         nxp->apiver = (id[2] << 8)|id[3];
         return true;
+    } else if (id[0] == 0xAA && id[1] == 0xAA) {
+        // PIC temporary, should implement "UBxx".
+        nxp->apiver = 99;
+        return true;
     }
 
     return false;
@@ -413,10 +439,21 @@ static void nxpSetSpeed(nxpSerial_t *nxp)
     uint32_t prescaler;
     uint32_t baudrate;
 
-    if (nxp->freq == 0)
+    if (nxp->freq == UB_FREQ_DONTCARE)
         return;  // Fixed or don't care
 
     baudrate = nxp->port.baudRate;
+
+    if (nxp->freq == UB_FREQ_BAUDx150) {
+        uint8_t brreg;
+        baudrate /= 150;
+        brreg = baudrate;
+        nxpWrite(nxp, UB_REG_BRL, brreg);
+	UBdelayMicroseconds(50);
+        brreg = baudrate >> 8;
+        nxpWrite(nxp, UB_REG_BRH, brreg);
+        return;
+    }
 
 #if 0
 #define MAX_BAUDRATE 57600
@@ -458,6 +495,9 @@ static void nxpSetSpeed(nxpSerial_t *nxp)
 
 static void nxpSetLine(nxpSerial_t *nxp)
 {
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
+        return;
+
     portOptions_t options = nxp->port.options; 
     uint8_t lcr = IS7x0_LCR_WLEN8;
 
@@ -478,6 +518,7 @@ static void nxpTransmitterControl(nxpSerial_t *nxp, bool enable)
         nxp->efcr |= IS7x0_EFCR_TXDISABLE;
 
     nxpWrite(nxp, IS7x0_REG_EFCR, nxp->efcr);
+    UBdelayMicroseconds(50);
 }
 
 static void nxpReceiverControl(nxpSerial_t *nxp, bool enable)
@@ -488,12 +529,16 @@ static void nxpReceiverControl(nxpSerial_t *nxp, bool enable)
         nxp->efcr |= IS7x0_EFCR_RXDISABLE;
 
     nxpWrite(nxp, IS7x0_REG_EFCR, nxp->efcr);
+    UBdelayMicroseconds(50);
 }
 
 static void nxpEnableEnhancedFunctions(nxpSerial_t *nxp)
 {
     uint8_t lcr;
     uint8_t efr;
+
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
+        return;
 
     nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr);
     nxpWrite(nxp, IS7x0_REG_LCR, 0xbf);
@@ -509,13 +554,16 @@ static void nxpFIFOEnable(nxpSerial_t *nxp)
 {
     uint8_t fcr;
 
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
+        return;
+
     //nxpRead(nxp, IS7x0_REG_FCR, 1, &fcr);
 
-    fcr |= IS7x0_FCR_TXFIFO_RST|IS7x0_FCR_RXFIFO_RST|IS7x0_FCR_FIFO_EN;
+    fcr = IS7x0_FCR_TXFIFO_RST|IS7x0_FCR_RXFIFO_RST|IS7x0_FCR_FIFO_EN;
 
     nxpWrite(nxp, IS7x0_REG_FCR, fcr);
 
-    nxp->fcr = fcr;
+    //nxp->fcr = fcr;
 }
 
 static void nxpSetTriggerLevel(nxpSerial_t *nxp)
@@ -527,10 +575,12 @@ static void nxpSetTriggerLevel(nxpSerial_t *nxp)
     nxpRead(nxp, IS7x0_REG_FCR, 1, &fcr);
     fcr = IS7x0_FCR_TXFIFO_RST|IS7x0_FCR_RXFIFO_RST; // RX and TX triggers to zero, reset both fifos, disable FIFO.
     nxpWrite(nxp, IS7x0_REG_FCR, fcr);
+    UBdelayMicroseconds(50);
 
     nxpRead(nxp, IS7x0_REG_MCR, 1, &mcr);
     mcr |= IS7x0_MCR_TCRTLR_EN;
     nxpWrite(nxp, IS7x0_REG_MCR, mcr);
+    UBdelayMicroseconds(50);
 
     tlr = (1 << IS7x0_TLR_RX_SFT)|(((NXPSERIAL_MAX_TXFRAG + 1) / 4) << IS7x0_TLR_TX_SFT);
     nxpWrite(nxp, IS7x0_REG_TLR, tlr);
@@ -545,6 +595,9 @@ static void nxpEnableInterrupt(nxpSerial_t *nxp)
 {
     uint8_t ier;
 
+    if (nxp->polled)
+        return;
+
     ier = IS7x0_IER_RHR;
     //ier |= IS7x0_IER_THR;
     //ier |= IS7x0_IER_CTS;
@@ -555,72 +608,22 @@ static void nxpEnableInterrupt(nxpSerial_t *nxp)
     nxpWrite(nxp, IS7x0_REG_IER, ier);
 }
 
-#if 0
-// Experimenting exti (RC2 = PA1)
-EXTI_INIT()
-{
-    GPIO_InitTypeDef GPIO_InitStructure;
-    EXTI_InitTypeDef EXTI_InitStructure;
-    NVIC_InitTypeDef NVIC_InitStructure;
-
-    //RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA | RCC_AHBPeriph_GPIOC, ENABLE);
-    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
-
-    // Pin
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-
-    SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA, EXTI_PinSource0);
-
-    // EXTI line
-    EXTI_InitStructure.EXTI_Line = EXTI_Line1;
-    EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
-    EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
-    EXTI_InitStructure.EXTI_LineCmd = ENABLE;
-    EXTI_Init(&EXTI_InitStructure);
-
-    registerExtiCallbackHandler(EXTI1_IRQn, nxpSerial_EXTI_Handler);
-
-    // Set priotity
-    NVIC_InitStructure.NVIC_IRQChannel = EXTI1_IRQn;
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0x0F;
-    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0x0F;
-    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-
-    NVIC_Init(&NVIC_InitStructure);
-}
-#endif
-
 serialPort_t *openNXPSerial(
 	nxpSerialPortIndex_e portIndex, serialReceiveCallbackPtr callback,
 	uint32_t baud, portOptions_t options)
 {
-    nxpSerial_t *nxp = &nxpSerialPorts[portIndex];
+    nxpSerial_t *nxp;
 
-    // nxp->active = false; // It's in the initializer
+    if (nxpSerialPortsInit) {
+        for (int i = 0 ; i < MAX_NXPSERIAL_PORTS; i++)
+            nxpSerialPorts[i].active = false;
+        nxpSerialPortsInit = true;
+    }
 
-    // Wanna do 'device tree' examples:
-    //   twserial0 at i2c1 addr 0x4c chan 0 type nxp/750 irq 4
-    //   twserial1 at i2c1 addr 0x4d chan 0 type nxp/750 irq 4
-    //   twserial2 at i2c1 addr 0x4e chan 0 type nxp/760 irq 4
-    //   twserial3 at i2c1 addr 0x4e chan 1 type nxp/760 irq 4
-    //   twserial4 at i2c1 addr 0x4f chan 0 type pic irq 10
-    //   twserial4 at i2c1 addr 0x50 chan 0 type pic irq 10
+    nxp = &nxpSerialPorts[portIndex];
 
-#if 0
-    if (portIndex == 1) {
-        // Switch Science BOB
-        // Should obtain from cli variables
-        nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
-        nxp->devtype = NXPSERIAL_DEVTYPE_NXP;
-        nxp->addr = 0x4c;
-        nxp->chan = 0;
-        nxp->freq = 12000000;
-        nxp->polled = 0;
-    } else if (portIndex == 0) {
-setupDebugPins();
+    switch (portIndex) {
+    case 0:
         // Sparkfun BOB
         // Should obtain from cli variables
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
@@ -629,20 +632,64 @@ setupDebugPins();
         nxp->chan = 0;
         nxp->freq = 14745600;
         nxp->polled = 0;
-    }
-#endif
 
-    if (portIndex == 0) {
-        // Arduino UART bridge
+        //setupDebugPins();
+
+        break;
+
+    case 1:
+        // Switch Science BOB
         // Should obtain from cli variables
+        nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
+        nxp->devtype = NXPSERIAL_DEVTYPE_NXP;
+        nxp->addr = 0x4c;
+        nxp->chan = 0;
+        nxp->freq = 12000000;
+        nxp->polled = 0;
+        break;
+
+    case 2:
+        // pic-twub (1825)
+        nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
+        nxp->devtype = NXPSERIAL_DEVTYPE_MINIMAL; // MINIMAL, MINIMAL_IMUX
+        nxp->addr = 0x36;
+        nxp->chan = 0;
+        nxp->freq = UB_FREQ_BAUDx150;
+        nxp->polled = 1;
+        break;
+
+    case 3:
+        // pic-twub (1822)
+        nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
+        nxp->devtype = NXPSERIAL_DEVTYPE_MINIMAL;
+        nxp->addr = 0x38;
+        nxp->chan = 0;
+        nxp->freq = UB_FREQ_BAUDx150;
+        nxp->polled = 1;
+        break;
+
+    case 4:
+        // MWOSD
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
         nxp->devtype = NXPSERIAL_DEVTYPE_MINIMAL;
         nxp->addr = 0x19;
         nxp->chan = 0;
-        nxp->freq = 0;	// Means fixed or don't care
-        nxp->polled = 0;
-setupDebugPins();
-    } else if (portIndex == 1) {
+        nxp->freq = UB_FREQ_BAUDx150;
+        nxp->polled = 1;
+        break;
+
+    case 5:
+        // Arduino Pro Mini UB
+        nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
+        nxp->devtype = NXPSERIAL_DEVTYPE_MINIMAL;
+        nxp->addr = 0x18;
+        nxp->chan = 0;
+        nxp->freq = UB_FREQ_BAUDx150;
+        nxp->polled = 1;
+        break;
+
+    default:
+        return NULL;
     }
 
     if (!nxpProbe(nxp) || !nxpReset(nxp))
@@ -663,6 +710,7 @@ setupDebugPins();
     nxp->bcycle = 0;
 
     nxpWrite(nxp, IS7x0_REG_IOCONTROL, IS7x0_IOC_RESET);
+    UBdelayMicroseconds(50);
 
     nxpEnableEnhancedFunctions(nxp);
     nxpSetSpeed(nxp);
@@ -877,7 +925,7 @@ void nxpSerialPoller(void)
             // For now, just reset the RX FIFO, for KISS.
             // We can handle the safe #rxlvl chars when the code is mature.
             nxpWrite(nxp, IS7x0_REG_FCR, nxp->fcr & ~IS7x0_FCR_TXFIFO_RST);
-            delayMicroseconds(50); // XXX
+            UBdelayMicroseconds(50); // XXX
             nxpRead(nxp, IS7x0_REG_RXLVL, 1, &nxp->rxlvl);
             nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
             break;

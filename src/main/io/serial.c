@@ -43,7 +43,7 @@
 #include "drivers/serial_usb_vcp.h"
 #endif
 
-#if defined(USE_NXPSERIAL1) || defined(USE_NXPSERIAL2)
+#if defined(USE_NXPSERIAL1) || defined(USE_NXPSERIAL2) || defined(USE_NXPSERIAL3) || defined(USE_NXPSERIAL4) || defined(USE_NXPSERIAL5) || defined(USE_NXPSERIAL6) || defined(USE_NXPSERIAL7) || defined(USE_NXPSERIAL8)
 #include "drivers/serial_nxp7x0.h"
 #endif
 
@@ -113,8 +113,30 @@ const serialPortIdentifier_e serialPortIdentifiers[SERIAL_PORT_COUNT] = {
 #ifdef USE_SOFTSERIAL2
     SERIAL_PORT_SOFTSERIAL2,
 #endif
+#ifdef USE_NXPSERIAL1
     SERIAL_PORT_NXPSERIAL1,
+#endif
+#ifdef USE_NXPSERIAL2
     SERIAL_PORT_NXPSERIAL2,
+#endif
+#ifdef USE_NXPSERIAL3
+    SERIAL_PORT_NXPSERIAL3,
+#endif
+#ifdef USE_NXPSERIAL4
+    SERIAL_PORT_NXPSERIAL4,
+#endif
+#ifdef USE_NXPSERIAL5
+    SERIAL_PORT_NXPSERIAL5,
+#endif
+#ifdef USE_NXPSERIAL6
+    SERIAL_PORT_NXPSERIAL6,
+#endif
+#ifdef USE_NXPSERIAL7
+    SERIAL_PORT_NXPSERIAL7,
+#endif
+#ifdef USE_NXPSERIAL8
+    SERIAL_PORT_NXPSERIAL8,
+#endif
 };
 
 STATIC_UNIT_TESTED uint8_t serialPortCount;
@@ -363,17 +385,69 @@ serialPort_t *openSerialPort(
             break;
 #endif
 
+#ifdef USE_NXPSERIAL1
         case SERIAL_PORT_NXPSERIAL1:
             serialPort = openNXPSerial(NXPSERIAL1, callback, baudRate, options);
             if (serialPort) // External device may fail to initialize
                 serialSetMode(serialPort, mode);
             break;
+#endif
 
+#ifdef USE_NXPSERIAL2
         case SERIAL_PORT_NXPSERIAL2:
             serialPort = openNXPSerial(NXPSERIAL2, callback, baudRate, options);
             if (serialPort) // External device may fail to initialize
                 serialSetMode(serialPort, mode);
             break;
+#endif
+
+#ifdef USE_NXPSERIAL3
+        case SERIAL_PORT_NXPSERIAL3:
+            serialPort = openNXPSerial(NXPSERIAL3, callback, baudRate, options);
+            if (serialPort) // External device may fail to initialize
+                serialSetMode(serialPort, mode);
+            break;
+#endif
+
+#ifdef USE_NXPSERIAL4
+        case SERIAL_PORT_NXPSERIAL4:
+            serialPort = openNXPSerial(NXPSERIAL4, callback, baudRate, options);
+            if (serialPort) // External device may fail to initialize
+                serialSetMode(serialPort, mode);
+            break;
+#endif
+
+#ifdef USE_NXPSERIAL5
+        case SERIAL_PORT_NXPSERIAL5:
+            serialPort = openNXPSerial(NXPSERIAL5, callback, baudRate, options);
+            if (serialPort) // External device may fail to initialize
+                serialSetMode(serialPort, mode);
+            break;
+#endif
+
+#ifdef USE_NXPSERIAL6
+        case SERIAL_PORT_NXPSERIAL6:
+            serialPort = openNXPSerial(NXPSERIAL6, callback, baudRate, options);
+            if (serialPort) // External device may fail to initialize
+                serialSetMode(serialPort, mode);
+            break;
+#endif
+
+#ifdef USE_NXPSERIAL7
+        case SERIAL_PORT_NXPSERIAL7:
+            serialPort = openNXPSerial(NXPSERIAL7, callback, baudRate, options);
+            if (serialPort) // External device may fail to initialize
+                serialSetMode(serialPort, mode);
+            break;
+#endif
+
+#ifdef USE_NXPSERIAL8
+        case SERIAL_PORT_NXPSERIAL8:
+            serialPort = openNXPSerial(NXPSERIAL8, callback, baudRate, options);
+            if (serialPort) // External device may fail to initialize
+                serialSetMode(serialPort, mode);
+            break;
+#endif
 
         default:
             break;
