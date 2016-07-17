@@ -122,7 +122,7 @@
 #define INVERTER
 #define DISPLAY
 
-#define SONAR
+//#define SONAR
 #define SONAR_PWM_TRIGGER_PIN       Pin_8   // PWM5 (PB8) - 5v tolerant
 #define SONAR_PWM_TRIGGER_GPIO      GPIOB
 #define SONAR_PWM_ECHO_PIN          Pin_9   // PWM6 (PB9) - 5v tolerant
@@ -143,7 +143,13 @@
 #define USE_UART3
 #define USE_SOFTSERIAL1
 #define USE_SOFTSERIAL2
-#define SERIAL_PORT_COUNT 5
+#define USE_NXPSERIAL1
+#define USE_NXPSERIAL2
+#define USE_NXPSERIAL3
+#define USE_NXPSERIAL4
+#define USE_NXPSERIAL5
+#define USE_NXPSERIAL6
+#define SERIAL_PORT_COUNT 11
 
 #define SOFTSERIAL_1_TIMER TIM3
 #define SOFTSERIAL_1_TIMER_RX_HARDWARE 4 // PWM 5
@@ -185,20 +191,20 @@
 #define EXTERNAL1_ADC_CHANNEL       ADC_Channel_5
 
 
-#define LED_STRIP
+//#define LED_STRIP
 #define LED_STRIP_TIMER TIM3
 #define WS2811_DMA_TC_FLAG           DMA1_FLAG_TC6
 #define WS2811_DMA_HANDLER_IDENTIFER DMA1_CH6_HANDLER
 
 #define GPS
-#define GTUNE
+//#define GTUNE
 #define BLACKBOX
 #define TELEMETRY
 #define SERIAL_RX
 #define USE_SERVOS
 #define USE_CLI
 
-#define SPEKTRUM_BIND
+//#define SPEKTRUM_BIND
 // UART2, PA3
 #define BIND_PORT  GPIOA
 #define BIND_PIN   Pin_3
@@ -214,7 +220,7 @@
 #define DEFAULT_RX_FEATURE FEATURE_RX_SERIAL
 #define DEFAULT FEATURES FEATURE_MOTOR_STOP
 
-#define HARDWARE_BIND_PLUG
+//#define HARDWARE_BIND_PLUG
 
 // Hardware bind plug at PB5 (Pin 41)
 #define BINDPLUG_PORT  GPIOB

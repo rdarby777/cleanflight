@@ -26,7 +26,7 @@
 
 //
 // Watch out!!!
-// ATmega328 running at 16MHz can't handle back-to-back WRITEs.
+// Slaves with ATmega328 running at 16MHz can't handle back-to-back WRITEs.
 // @800KHz, 45usec delay is required.
 // 
 #define UBdelayMicroseconds(n) delayMicroseconds(n)
@@ -145,6 +145,7 @@ nxpSerial_t nxpSerialPorts[MAX_NXPSERIAL_PORTS];
 
 volatile bool nxpInterrupted = false;
 
+#ifdef SPRACINGF3
 // RC2 (BLUE) = PA1 : IRQ
 // (GREEN) = PB5
 // (YELLOW) = PB4
@@ -170,10 +171,24 @@ volatile bool nxpInterrupted = false;
 #endif
 
 // RC6 (GREEN) = PB5 : PA5 = CURRENT ADC (conflict? check ADC config!)
+#endif
+
+#ifdef NAZE
+#define I2CSERIAL_INT_PERIPH          RCC_APB2Periph_GPIOA
+#define I2CSERIAL_INT_PIN             Pin_1
+#define I2CSERIAL_INT_GPIO            GPIOA
+#define I2CSERIAL_INT_EXTI_LINE       EXTI_Line1
+#define I2CSERIAL_INT_EXTI_PIN_SOURCE GPIO_PinSource1
+#define I2CSERIAL_INT_IRQN            EXTI1_IRQn
+#endif
 
 extiConfig_t nxpIntExtiConfig = {
+#ifdef STM32F10X
+    .gpioAPB2Peripherals = RCC_APB2Periph_GPIOB,
+#endif
+#ifdef STM32F303xC
     .gpioAHBPeripherals	 = RCC_AHBPeriph_GPIOB,
-    //.gpioAPB2Peripherals // STM32F103 only, uint32_t
+#endif
 
     .gpioPort            = I2CSERIAL_INT_GPIO,
     .gpioPin             = I2CSERIAL_INT_PIN,
@@ -276,7 +291,14 @@ void nxpSerialIntExtiInit(void)
 static void nxpDebugSetup(void)
 {
     gpio_config_t LEDgpio;
+
+#ifdef STM32F10X
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+#endif
+#ifdef STM32F303xC
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
+#endif
+
     LEDgpio.pin = Pin_4;
     LEDgpio.speed = Speed_2MHz;
     LEDgpio.mode = Mode_Out_PP;
@@ -631,7 +653,7 @@ serialPort_t *openNXPSerial(
         nxp->addr = 0x4d;
         nxp->chan = 0;
         nxp->freq = 14745600;
-        nxp->polled = 0;
+        nxp->polled = 1;
 
         //setupDebugPins();
 
@@ -645,7 +667,7 @@ serialPort_t *openNXPSerial(
         nxp->addr = 0x4c;
         nxp->chan = 0;
         nxp->freq = 12000000;
-        nxp->polled = 0;
+        nxp->polled = 1;
         break;
 
     case 2:
