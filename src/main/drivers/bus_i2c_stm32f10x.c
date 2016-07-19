@@ -142,7 +142,7 @@ bool i2cWriteBuffer(uint8_t addr_, uint8_t reg_, uint8_t len_, uint8_t *data)
         return i2cHandleHardwareFailure();
     }
 
-    return !error;
+    return true;
 }
 
 bool i2cWrite(uint8_t addr_, uint8_t reg_, uint8_t data)
@@ -182,7 +182,7 @@ bool i2cRead(uint8_t addr_, uint8_t reg_, uint8_t len, uint8_t* buf)
     if (error || timeout == 0)
         return i2cHandleHardwareFailure();
 
-    return !error;
+    return true;
 }
 
 static void i2c_er_handler(void)
