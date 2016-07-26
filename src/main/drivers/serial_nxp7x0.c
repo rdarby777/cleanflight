@@ -48,8 +48,10 @@
             nxpi2cWriteBuffer((nxp)->addr, (nxp)->chan, reg, n, buf),\
             (nxp)->bcycle += ((n) + 2))
 
-#define NXPSERIAL_MAX_RXFRAG 16
-#define NXPSERIAL_MAX_TXFRAG 16 
+//#define NXPSERIAL_MAX_RXFRAG 16
+//#define NXPSERIAL_MAX_TXFRAG 16 
+#define NXPSERIAL_MAX_RXFRAG 12
+#define NXPSERIAL_MAX_TXFRAG 12 
 
 int max_rxfrag = NXPSERIAL_MAX_RXFRAG;
 int max_txfrag = NXPSERIAL_MAX_TXFRAG;
@@ -76,6 +78,12 @@ typedef struct nxpSerial_s {
 #define NXPSERIAL_DEVTYPE_NONE         0
 #define NXPSERIAL_DEVTYPE_NXP          1 // NXP SC16IS74{0,1},7{5,6}{0,2}
 #define NXPSERIAL_DEVTYPE_MINIMAL      2 // UART Bridge
+#define NXPSERIAL_DEVTYPE_UBLOX        3 // u-blox DDC
+
+#define UBX_REG_LENHI    0xfd
+#define UBX_REG_LENLO    0xfe
+#define UBX_REG_DATA     0xff
+
     uint16_t         apiver;
 
     int32_t         freq;      // -1:don't care, 0:baudrate/150, otherwise::crystal
@@ -376,12 +384,21 @@ nxpResetUB(nxpSerial_t *nxp)
 
 static
 bool
+nxpResetUBLOX(nxpSerial_t *nxp)
+{
+    return true;
+}
+
+static
+bool
 nxpReset(nxpSerial_t *nxp)
 {
     if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP)
         return nxpResetNXP(nxp);
     else if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
         return nxpResetUB(nxp);
+    else if (nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX)
+        return nxpResetUBLOX(nxp);
 
     return false;
 }
@@ -445,12 +462,86 @@ nxpProbeUB(nxpSerial_t *nxp)
 
 static
 bool
+nxpProbeUBLOX(nxpSerial_t *nxp)
+{
+    // Observations and assumptions:
+    // (1) All data registers except 0xfd (length high), 0xfe (length low) and
+    // 0xff (stream outlet) returns their address.
+    // (2) Length is limited to relatively small number and does not extend to
+    // 0xfd00~ range (On MAX-M8Q, only goes up to 0x19xx.)
+    //
+    // Probe strategy:
+    // (1) Read reg 0xf0 to 0xff.
+    // (2) Check if 0xf0 to 0xfc are read as their address, and
+    // (3) Check if 0xfd != 0xfd
+
+    uint8_t ubuf[14];
+
+    if (!i2cRead(nxp->addr, 0xf0, 14, ubuf))
+        return false;
+
+    for (int i = 0 ; i <= 0xc ; i++) {
+        if (ubuf[i] != 0xf0 + i)
+            return false;
+    }
+
+    if (ubuf[0xd] >= 0xfd)
+        return false;
+
+#if 0
+// A little test for MAX-M8Q
+int retry = 0;
+int mlen;
+uint8_t lbuf[2];
+uint8_t dbuf[16];
+int tlen;
+bool ok;
+
+do {
+  if (retry) delay(1000);
+  do {
+    ok = i2cRead(nxp->addr, 0xfd, 2, lbuf);
+  } while (!ok);
+  mlen = (lbuf[0] << 0)|lbuf[1];
+} while (mlen == 0 && ++retry < 10);
+
+// Dump out the garbage
+while (mlen) {
+  tlen = (mlen > 16) ? 16 : mlen;
+  i2cRead(nxp->addr, 0xff, tlen, dbuf);
+}
+
+// Wait for a new message
+retry = 0;
+
+do {
+  if (retry) delay(1000);
+  do {
+    ok = i2cRead(nxp->addr, 0xfd, 2, lbuf);
+  } while (!ok);
+  mlen = (lbuf[0] << 0)|lbuf[1];
+} while (mlen == 0 && ++retry < 10);
+
+// Read it
+while (mlen) {
+  tlen = (mlen > 16) ? 16 : mlen;
+  i2cRead(nxp->addr, 0xff, tlen, dbuf);
+}
+#endif
+
+    return true;
+}
+
+static
+bool
 nxpProbe(nxpSerial_t *nxp)
 {
     if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP)
         return nxpProbeNXP(nxp);
     else if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
         return nxpProbeUB(nxp);
+    else if (nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX)
+        return nxpProbeUBLOX(nxp);
 
     return false;
 }
@@ -471,7 +562,7 @@ static void nxpSetSpeed(nxpSerial_t *nxp)
         baudrate /= 150;
         brreg = baudrate;
         nxpWrite(nxp, UB_REG_BRL, brreg);
-	UBdelayMicroseconds(50);
+	UBdelayMicroseconds(100);
         brreg = baudrate >> 8;
         nxpWrite(nxp, UB_REG_BRH, brreg);
         return;
@@ -517,7 +608,8 @@ static void nxpSetSpeed(nxpSerial_t *nxp)
 
 static void nxpSetLine(nxpSerial_t *nxp)
 {
-    if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL
+     || nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX)
         return;
 
     portOptions_t options = nxp->port.options; 
@@ -534,6 +626,9 @@ static void nxpSetLine(nxpSerial_t *nxp)
 
 static void nxpTransmitterControl(nxpSerial_t *nxp, bool enable)
 {
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX)
+        return;
+
     if (enable)
         nxp->efcr &= ~IS7x0_EFCR_TXDISABLE;
     else
@@ -545,6 +640,9 @@ static void nxpTransmitterControl(nxpSerial_t *nxp, bool enable)
 
 static void nxpReceiverControl(nxpSerial_t *nxp, bool enable)
 {
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX)
+        return;
+
     if (enable)
         nxp->efcr &= ~IS7x0_EFCR_RXDISABLE;
     else
@@ -559,7 +657,8 @@ static void nxpEnableEnhancedFunctions(nxpSerial_t *nxp)
     uint8_t lcr;
     uint8_t efr;
 
-    if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL
+     || nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX)
         return;
 
     nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr);
@@ -576,7 +675,8 @@ static void nxpFIFOEnable(nxpSerial_t *nxp)
 {
     uint8_t fcr;
 
-    if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL)
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_MINIMAL
+     || nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX)
         return;
 
     //nxpRead(nxp, IS7x0_REG_FCR, 1, &fcr);
@@ -593,6 +693,9 @@ static void nxpSetTriggerLevel(nxpSerial_t *nxp)
     uint8_t fcr;
     uint8_t mcr;
     uint8_t tlr;
+
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX)
+        return;
 
     nxpRead(nxp, IS7x0_REG_FCR, 1, &fcr);
     fcr = IS7x0_FCR_TXFIFO_RST|IS7x0_FCR_RXFIFO_RST; // RX and TX triggers to zero, reset both fifos, disable FIFO.
@@ -710,6 +813,15 @@ serialPort_t *openNXPSerial(
         nxp->polled = 1;
         break;
 
+    case 6:
+        // u-blox DDC
+        nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
+        nxp->devtype = NXPSERIAL_DEVTYPE_UBLOX;
+        nxp->addr = 0x42;
+        nxp->freq = -1;
+        nxp->polled = 1;
+        break;
+
     default:
         return NULL;
     }
@@ -731,16 +843,18 @@ serialPort_t *openNXPSerial(
 
     nxp->bcycle = 0;
 
-    nxpWrite(nxp, IS7x0_REG_IOCONTROL, IS7x0_IOC_RESET);
-    UBdelayMicroseconds(50);
+    if (nxp->devtype != NXPSERIAL_DEVTYPE_UBLOX) {
+        // Superfluious reset???
+        nxpWrite(nxp, IS7x0_REG_IOCONTROL, IS7x0_IOC_RESET);
+        UBdelayMicroseconds(50);
 
-    nxpEnableEnhancedFunctions(nxp);
-    nxpSetSpeed(nxp);
-    nxpSetLine(nxp);
-    nxpSetTriggerLevel(nxp);
-    nxpFIFOEnable(nxp);
-
-    nxpRead(nxp, IS7x0_REG_EFCR, 1, &nxp->efcr);
+        nxpEnableEnhancedFunctions(nxp);
+        nxpSetSpeed(nxp);
+        nxpSetLine(nxp);
+        nxpSetTriggerLevel(nxp);
+        nxpFIFOEnable(nxp);
+        nxpRead(nxp, IS7x0_REG_EFCR, 1, &nxp->efcr);
+    }
 
     //EXTI_INIT();
     nxpSerialIntExtiInit();
@@ -837,6 +951,53 @@ void nxpSerialSetMode(serialPort_t *instance, portMode_t mode)
     nxpReceiverControl(nxp, ((nxp->port.mode & MODE_RX) == MODE_RX));
 }
 
+static void nxpUpdateRXLVL(nxpSerial_t *nxp)
+{
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX) {
+        // u-blox's data queue is big, but data can be read in small chunks.
+        uint8_t lbuf[2];
+        uint16_t len; 
+        if (!i2cRead(nxp->addr, UBX_REG_LENHI, 2, lbuf)) {
+            // Failed to read RXLVL... just return?
+            return;
+        }
+        len = (lbuf[0] << 8)|lbuf[1];
+        nxp->rxlvl = (len > 255) ? 255 : len;
+    } else {
+        nxpRead(nxp, IS7x0_REG_RXLVL, 1, &nxp->rxlvl);
+    }
+}
+
+static void nxpUpdateTXLVL(nxpSerial_t *nxp)
+{
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX) {
+        // u-blox doesn't provide any mechanism for write pacing,
+        // But since messages can be written in small chunks,
+        // pretend it has a reasonable amount of buffer.
+        nxp->txlvl = 64;
+    } else {
+        nxpRead(nxp, IS7x0_REG_TXLVL, 1, &nxp->txlvl);
+    }
+}
+
+static void nxpReadRHR(nxpSerial_t *nxp, int len, uint8_t *buf)
+{
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX) {
+        i2cRead(nxp->addr, UBX_REG_DATA, len, buf);
+    } else {
+        nxpRead(nxp, IS7x0_REG_RHR, len, buf);
+    }
+}
+
+static void nxpWriteTHR(nxpSerial_t *nxp, int len, uint8_t *buf)
+{
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_UBLOX) {
+        i2cWriteBuffer(nxp->addr, -1, len, buf);
+    } else {
+        nxpWriteBuffer(nxp, IS7x0_REG_THR, len, buf);
+    }
+}
+
 void nullFunction(void)
 {
 }
@@ -903,6 +1064,7 @@ void nxpSerialPoller(void)
         if (interrupted)
             nxpRead(nxp, IS7x0_REG_IIR, 1, &nxp->iir);
         else if (nxp->polled)
+            // Simulate RX time-out
             nxp->iir = IS7x0_IIR_RXTIMO;
     }
 
@@ -928,12 +1090,12 @@ void nxpSerialPoller(void)
         case IS7x0_IIR_RXTIMO:   // RX chars below trigger are available
         case IS7x0_IIR_RHR:      // RX chars above trigger are available
             // Update the rxlvl
-            nxpRead(nxp, IS7x0_REG_RXLVL, 1, &nxp->rxlvl);
+            nxpUpdateRXLVL(nxp);
             break;
 
         case IS7x0_IIR_THR:      // TX fifo ready for more queuing
             // Update the txlvl
-            nxpRead(nxp, IS7x0_REG_TXLVL, 1, &nxp->txlvl);
+            nxpUpdateTXLVL(nxp);
             break;
 
         case IS7x0_IIR_LINESTAT:
@@ -980,7 +1142,7 @@ void nxpSerialPoller(void)
                     rxlen = 1;
                 }
 
-                nxpRead(nxp, IS7x0_REG_RHR, rxlen,
+                nxpReadRHR(nxp, rxlen, 
                         &(nxp->port.rxBuffer[nxp->port.rxBufferHead]));
 
                 nxp->port.rxBufferHead = (nxp->port.rxBufferHead + rxlen)
@@ -1029,7 +1191,7 @@ void nxpSerialPoller(void)
                     txlen = 1;
                 }
 
-                nxpWriteBuffer(nxp, IS7x0_REG_THR, txlen,
+                nxpWriteTHR(nxp, txlen, 
                         &(nxp->port.txBuffer[nxp->port.txBufferTail]));
 
                 nxp->port.txBufferTail = (nxp->port.txBufferTail + txlen)
