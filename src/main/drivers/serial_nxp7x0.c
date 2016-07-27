@@ -16,7 +16,11 @@
 #include "nvic.h"
 //#include "timer.h"
 
+#include "target.h"
+
 #include "drivers/bus_i2c.h"
+#include "drivers/bus_spi.h"
+#include "drivers/system.h"
 
 #include "serial.h"
 #include "serial_nxp7x0.h"
@@ -48,6 +52,15 @@
             nxpi2cWriteBuffer((nxp)->addr, (nxp)->chan, reg, n, buf),\
             (nxp)->bcycle += ((n) + 2))
 
+#ifdef NAZE
+#define NXPSERIAL_SPI_INSTANCE NAZE_SPI_INSTANCE
+#define NXPSERIAL_SPI_CS_GPIO  NAZE_SPI_CS_GPIO
+#define NXPSERIAL_SPI_CS_PIN   NAZE_SPI_CS_PIN
+#endif
+
+#define DISABLE_NXP       GPIO_SetBits(NXPSERIAL_SPI_CS_GPIO,   NXPSERIAL_SPI_CS_PIN)
+#define ENABLE_NXP        GPIO_ResetBits(NXPSERIAL_SPI_CS_GPIO, NXPSERIAL_SPI_CS_PIN)
+
 //#define NXPSERIAL_MAX_RXFRAG 16
 //#define NXPSERIAL_MAX_TXFRAG 16 
 #define NXPSERIAL_MAX_RXFRAG 12
@@ -71,6 +84,7 @@ typedef struct nxpSerial_s {
     uint8_t          bustype;
 #define NXPSERIAL_BUSTYPE_I2C 0
 #define NXPSERIAL_BUSTYPE_SPI 1
+    SPI_TypeDef      *spibus;
     uint8_t          addr;
     uint8_t          chan;
 
@@ -403,12 +417,60 @@ nxpReset(nxpSerial_t *nxp)
     return false;
 }
 
+void
+spiprobe(void)
+{
+    uint8_t pbuf[2] = { 0x55, 0xAA };
+    ENABLE_NXP;
+    spiTransfer(SPI2, NULL, pbuf, 2);
+    DISABLE_NXP;
+}
+
+static
+void
+nxpReadSPIreg(nxpSerial_t *nxp, uint8_t reg, int len, uint8_t *buf)
+{
+    uint8_t command[2];
+    uint8_t in[2];
+
+    command[0] = (0x80 | (reg << 3));
+    command[1] = 0; // Don't care?
+
+    ENABLE_NXP;
+
+    //spiTransfer(nxp->spibus, in, command, sizeof(command));
+    spiTransfer(SPI2, in, command, sizeof(command));
+
+    DISABLE_NXP;
+
+    *buf = in[1];
+}
+
+
+static
+bool
+nxpProbeNXPSPI(nxpSerial_t *nxp)
+{
+    uint8_t lcr, lsr, spr;
+    uint8_t txlvl;
+
+    nxpReadSPIreg(nxp, IS7x0_REG_LCR, 1, &lcr);
+    nxpReadSPIreg(nxp, IS7x0_REG_LSR, 1, &lsr);
+    nxpReadSPIreg(nxp, IS7x0_REG_SPR, 1, &spr);
+
+    return false;
+}
+
 static
 bool
 nxpProbeNXP(nxpSerial_t *nxp)
 {
     uint8_t lcr, lsr;
     uint8_t txlvl;
+
+    if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
+        return nxpProbeNXPSPI(nxp);
+    }
 
     if (!nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr)
      || !nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr))
@@ -748,9 +810,19 @@ serialPort_t *openNXPSerial(
     nxp = &nxpSerialPorts[portIndex];
 
     switch (portIndex) {
+    //case 7:
+    case 0:
+        // Sparkfun BOB on SPI
+        nxp->bustype = NXPSERIAL_BUSTYPE_SPI;
+        nxp->spibus = NXPSERIAL_SPI_INSTANCE;
+        nxp->devtype = NXPSERIAL_DEVTYPE_NXP;
+        nxp->freq = 14745600;
+        nxp->polled = 1;
+        break;
+
+#if 0
     case 0:
         // Sparkfun BOB
-        // Should obtain from cli variables
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
         nxp->devtype = NXPSERIAL_DEVTYPE_NXP;
         nxp->addr = 0x4d;
@@ -759,6 +831,7 @@ serialPort_t *openNXPSerial(
         nxp->polled = 1;
 
         //setupDebugPins();
+#endif
 
         break;
 
@@ -821,6 +894,7 @@ serialPort_t *openNXPSerial(
         nxp->freq = -1;
         nxp->polled = 1;
         break;
+
 
     default:
         return NULL;

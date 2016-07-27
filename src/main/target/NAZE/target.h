@@ -143,13 +143,15 @@
 #define USE_UART3
 #define USE_SOFTSERIAL1
 #define USE_SOFTSERIAL2
-#define USE_NXPSERIAL1
-#define USE_NXPSERIAL2
-#define USE_NXPSERIAL3
-#define USE_NXPSERIAL4
-#define USE_NXPSERIAL5
-#define USE_NXPSERIAL6
-#define SERIAL_PORT_COUNT 11
+#define USE_NXPSERIAL1 // 750 sparkfun bob on i2c
+#define USE_NXPSERIAL2 // 750 switch science bob on i2c
+#define USE_NXPSERIAL3 // PIC1825 UB on i2c
+#define USE_NXPSERIAL4 // PIC1840 UB on i2c
+#define USE_NXPSERIAL5 // MWOSD embedded on i2c
+#define USE_NXPSERIAL6 // (Pro Mini UB on i2c)
+#define USE_NXPSERIAL7 // ublox MAX-M8Q on i2c
+#define USE_NXPSERIAL8 // 750 sparkfun bob on spi
+#define SERIAL_PORT_COUNT 13
 
 #define SOFTSERIAL_1_TIMER TIM3
 #define SOFTSERIAL_1_TIMER_RX_HARDWARE 4 // PWM 5
