@@ -153,6 +153,9 @@ extern const struct serialPortVTable nxpSerialVTable[];
 static bool nxpSerialPortsInit = false;
 nxpSerial_t nxpSerialPorts[MAX_NXPSERIAL_PORTS];
 
+/*
+ * Buffer management
+ */
 #define rxBufferLen(port) ((((port).rxBufferHead - (port).rxBufferTail)) & ((port).rxBufferSize - 1))
 #define txBufferLen(port) ((((port).txBufferHead - (port).txBufferTail)) & ((port).txBufferSize - 1))
 
@@ -162,7 +165,25 @@ nxpSerial_t nxpSerialPorts[MAX_NXPSERIAL_PORTS];
 #define rxBufferBurstLimit(port) ((port).rxBufferSize - (port).rxBufferHead)
 #define txBufferBurstLimit(port) ((port).txBufferSize - (port).txBufferTail)
 
+static void resetBuffers(nxpSerial_t *nxp)
+{
+    nxp->port.rxBufferSize = NXPSERIAL_BUFFER_SIZE;
+    nxp->port.rxBuffer = nxp->rxBuf;
+    nxp->port.rxBufferTail = 0;
+    nxp->port.rxBufferHead = 0;
+
+    nxp->port.txBufferSize = NXPSERIAL_BUFFER_SIZE;
+    nxp->port.txBuffer = nxp->txBuf;
+    nxp->port.txBufferTail = 0;
+    nxp->port.txBufferHead = 0;
+}
+
+/*
+ * Interrupt related
+ */
 volatile bool nxpInterrupted = false;
+
+// Some experimental pin assignments
 
 #ifdef SPRACINGF3
 // RC2 (BLUE) = PA1 : IRQ
@@ -307,6 +328,7 @@ void nxpSerialIntExtiInit(void)
 }
 
 // Litte tools for debugging/monitoring
+
 static void nxpDebugSetup(void)
 {
     gpio_config_t LEDgpio;
@@ -350,19 +372,6 @@ static void nxpZEDOFF(void)
 static void nxpZEDON(void)
 {
     digitalHi(GPIOB, Pin_5);
-}
-
-static void resetBuffers(nxpSerial_t *nxp)
-{
-    nxp->port.rxBufferSize = NXPSERIAL_BUFFER_SIZE;
-    nxp->port.rxBuffer = nxp->rxBuf;
-    nxp->port.rxBufferTail = 0;
-    nxp->port.rxBufferHead = 0;
-
-    nxp->port.txBufferSize = NXPSERIAL_BUFFER_SIZE;
-    nxp->port.txBuffer = nxp->txBuf;
-    nxp->port.txBufferTail = 0;
-    nxp->port.txBufferHead = 0;
 }
 
 /*
@@ -534,73 +543,10 @@ nxpReset(nxpSerial_t *nxp)
 
 static
 bool
-nxpProbeNXPSPI(nxpSerial_t *nxp)
-{
-    uint8_t rhr, ier, iir, lcr, mcr, lsr, msr, spr, txlvl, rxlvl, iodir, iostate, iointena, iocontrol, efcr;
-
-#if 0
-    nxpReadSPI(nxp, IS7x0_REG_RHR, &rhr);
-    nxpReadSPI(nxp, IS7x0_REG_IER, &ier);
-    nxpReadSPI(nxp, IS7x0_REG_IIR, &iir);
-    nxpReadSPI(nxp, IS7x0_REG_LCR, &lcr);
-    nxpReadSPI(nxp, IS7x0_REG_MCR, &mcr);
-    nxpReadSPI(nxp, IS7x0_REG_LSR, &lsr);
-    nxpReadSPI(nxp, IS7x0_REG_MSR, &msr);
-    nxpReadSPI(nxp, IS7x0_REG_SPR, &spr);
-    nxpReadSPI(nxp, IS7x0_REG_TXLVL, &txlvl);
-    nxpReadSPI(nxp, IS7x0_REG_RXLVL, &rxlvl);
-    nxpReadSPI(nxp, IS7x0_REG_IODIR, &iodir);
-    nxpReadSPI(nxp, IS7x0_REG_IOSTATE, &iostate);
-    nxpReadSPI(nxp, IS7x0_REG_IOINTENA, &iointena);
-    nxpReadSPI(nxp, IS7x0_REG_IOCONTROL, &iocontrol);
-    nxpReadSPI(nxp, IS7x0_REG_EFCR, &efcr);
-#else
-    nxpRead(nxp, IS7x0_REG_RHR, 1, &rhr);
-    nxpRead(nxp, IS7x0_REG_IER, 1, &ier);
-    nxpRead(nxp, IS7x0_REG_IIR, 1, &iir);
-    nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr);
-    nxpRead(nxp, IS7x0_REG_MCR, 1, &mcr);
-    nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr);
-    nxpRead(nxp, IS7x0_REG_MSR, 1, &msr);
-    nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
-    nxpRead(nxp, IS7x0_REG_TXLVL, 1, &txlvl);
-    nxpRead(nxp, IS7x0_REG_RXLVL, 1, &rxlvl);
-    nxpRead(nxp, IS7x0_REG_IODIR, 1, &iodir);
-    nxpRead(nxp, IS7x0_REG_IOSTATE, 1, &iostate);
-    nxpRead(nxp, IS7x0_REG_IOINTENA, 1, &iointena);
-    nxpRead(nxp, IS7x0_REG_IOCONTROL, 1, &iocontrol);
-    nxpRead(nxp, IS7x0_REG_EFCR, 1, &efcr);
-#endif
-
-    dprintf(("nxpProbeNXPSPI: rhr 0x%x ier 0x%x iir 0x%x lcr 0x%x mcr 0x%x lsr 0x%x msr 0x%x spr 0x%x\r\n", rhr, ier, iir, lcr, mcr, lsr, msr, spr));
-    dprintf(("nxpProbeNXPSPI: txlvl 0x%x rxlvl 0x%x iodir 0x%x iostate 0x%x iointena 0x%x iocontrol 0x%x efcr 0x%x\r\n", txlvl, rxlvl, iodir, iostate, iointena, iocontrol, efcr));
-
-    // Test nxpReadBufferSPI
-    uint8_t rbuf[4];
-    nxpReadBufferSPI(nxp, IS7x0_REG_RHR, 4, rbuf);
-
-    // Test nxpWriteSPI
-    nxpWriteSPI(nxp, IS7x0_REG_SPR, 0xAA);
-
-    // Test nxpWriteBufferSPI
-    uint8_t wbuf[4] = { 0x12, 0x34, 0x56, 0x78 };
-    nxpWriteBufferSPI(nxp, IS7x0_REG_THR, 4, wbuf);
-
-    return false;
-}
-
-static
-bool
 nxpProbeNXP(nxpSerial_t *nxp)
 {
     uint8_t lcr, lsr;
     uint8_t txlvl;
-
-#if 0
-    if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
-        return nxpProbeNXPSPI(nxp);
-    }
-#endif
 
     if (!nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr)
      || !nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr)) {
@@ -618,7 +564,7 @@ nxpProbeNXP(nxpSerial_t *nxp)
     }
 
     // Not after reset or unknown chip.
-    // Try reading the SPR for a signature.
+    // Try reading the SPR for our signature.
     uint8_t spr;
     nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
     dprintf(("nxpProbeNXP: spr 0x%x\r\n", spr));
@@ -1084,10 +1030,6 @@ serialPort_t *openNXPSerial(
             nxpWriteSPI(nxp, IS7x0_REG_SPR, 0xAA);
         else
             nxpWrite(nxp, IS7x0_REG_SPR, 0xAA);
-    }
-
-    if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
-        return NULL;
     }
 
     nxp->port.vTable = nxpSerialVTable;
