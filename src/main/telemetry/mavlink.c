@@ -168,18 +168,21 @@ void configureMAVLinkTelemetryPort(void)
     mavlinkTelemetryEnabled = true;
 }
 
-void checkMAVLinkTelemetryState(void)
+bool checkMAVLinkTelemetryState(void)
 {
     bool newTelemetryEnabledValue = telemetryDetermineEnabledState(mavlinkPortSharing);
 
     if (newTelemetryEnabledValue == mavlinkTelemetryEnabled) {
-        return;
+        return false;
     }
 
-    if (newTelemetryEnabledValue)
+    if (newTelemetryEnabledValue) {
         configureMAVLinkTelemetryPort();
-    else
+        return false;
+    } else {
         freeMAVLinkTelemetryPort();
+        return true;
+    }
 }
 
 void mavlinkSendSystemStatus(void)

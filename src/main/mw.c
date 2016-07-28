@@ -588,8 +588,9 @@ void processRx(void)
             releaseSharedTelemetryPorts();
         } else {
             // the telemetry state must be checked immediately so that shared serial ports are released.
-            telemetryCheckState();
-            mspSerialAllocatePorts();
+            if (telemetryCheckState()) {
+                mspSerialAllocatePorts();
+            }
         }
     }
 #endif

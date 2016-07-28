@@ -106,7 +106,9 @@ const extiConfig_t *selectMPUIntExtiConfig(void)
     };
 
     if (hardwareRevision < NAZE32_REV5) {
-        return &nazeRev4MPUIntExtiConfig;
+        // Force nazeRev5MPUIntExtiConfig, for FLIP32AIO
+        //return &nazeRev4MPUIntExtiConfig;
+        return &nazeRev5MPUIntExtiConfig;
     } else {
         return &nazeRev5MPUIntExtiConfig;
     }
