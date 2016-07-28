@@ -28,6 +28,13 @@
 #include "sc16is7x0.h"    // NXP SC16IS7xx registers
 #include "ubreg.h"        // I2C/UART Bridge specific registers
 
+#if 1
+#include "common/printf.h"
+#define dprintf(x) printf x
+#else
+#define dprintf(x)
+#endif
+
 //
 // Watch out!!!
 // Slaves with ATmega328 running at 16MHz can't handle back-to-back WRITEs.
@@ -35,22 +42,6 @@
 // 
 #define UBdelayMicroseconds(n) delayMicroseconds(n)
 
-#define nxpi2cRead(addr, chan, reg, n, buf) \
-            i2cRead(addr, ((reg) << 3)|((chan) << 1), n, buf)
-#define nxpi2cWrite(addr, chan, reg, data) \
-            i2cWrite(addr, ((reg) << 3)|((chan) << 1), data)
-#define nxpi2cWriteBuffer(addr, chan, reg, n, buf) \
-            i2cWriteBuffer(addr, ((reg) << 3)|((chan) << 1), n, buf)
-
-#define nxpRead(nxp, reg, n, buf) (\
-            nxpi2cRead((nxp)->addr, (nxp)->chan, reg, n, buf),\
-            (nxp)->bcycle += ((n) + 5))
-#define nxpWrite(nxp, reg, data) (\
-            nxpi2cWrite((nxp)->addr, (nxp)->chan, reg, data),\
-            (nxp)->bcycle += 3)
-#define nxpWriteBuffer(nxp, reg, n, buf) (\
-            nxpi2cWriteBuffer((nxp)->addr, (nxp)->chan, reg, n, buf),\
-            (nxp)->bcycle += ((n) + 2))
 
 #ifdef NAZE
 #define NXPSERIAL_SPI_INSTANCE NAZE_SPI_INSTANCE
@@ -58,8 +49,8 @@
 #define NXPSERIAL_SPI_CS_PIN   NAZE_SPI_CS_PIN
 #endif
 
-#define DISABLE_NXP       GPIO_SetBits(NXPSERIAL_SPI_CS_GPIO,   NXPSERIAL_SPI_CS_PIN)
-#define ENABLE_NXP        GPIO_ResetBits(NXPSERIAL_SPI_CS_GPIO, NXPSERIAL_SPI_CS_PIN)
+#define DISABLE_NXP(nxp)  GPIO_SetBits((nxp)->spicsgpio, (nxp)->spicspin)
+#define ENABLE_NXP(nxp)   GPIO_ResetBits((nxp)->spicsgpio, (nxp)->spicspin)
 
 //#define NXPSERIAL_MAX_RXFRAG 16
 //#define NXPSERIAL_MAX_TXFRAG 16 
@@ -84,8 +75,14 @@ typedef struct nxpSerial_s {
     uint8_t          bustype;
 #define NXPSERIAL_BUSTYPE_I2C 0
 #define NXPSERIAL_BUSTYPE_SPI 1
-    SPI_TypeDef      *spibus;
+    // I2c
+    I2C_TypeDef      *i2cbus;
     uint8_t          addr;
+    // SPI
+    SPI_TypeDef      *spibus;
+    GPIO_TypeDef     *spicsgpio;
+    uint16_t         spicspin;
+
     uint8_t          chan;
 
     uint8_t          devtype;
@@ -368,16 +365,134 @@ static void resetBuffers(nxpSerial_t *nxp)
     nxp->port.txBufferHead = 0;
 }
 
+/*
+ * Register level access
+ */
+#define NXP_CHANREG(chan,reg) (((reg) << 3)|((chan)<< 1))
+
+#define nxpi2cRead(addr, chan, reg, n, buf) \
+            i2cRead(addr, NXP_CHANREG(chan, reg), n, buf)
+#define nxpi2cWrite(addr, chan, reg, data) \
+            i2cWrite(addr, NXP_CHANREG(chan, reg), data)
+#define nxpi2cWriteBuffer(addr, chan, reg, n, buf) \
+            i2cWriteBuffer(addr, NXP_CHANREG(chan, reg), n, buf)
+
+#if 0
+#define nxpRead(nxp, reg, n, buf) (\
+            nxpi2cRead((nxp)->addr, (nxp)->chan, reg, n, buf),\
+            (nxp)->bcycle += ((n) + 5))
+#define nxpWrite(nxp, reg, data) (\
+            nxpi2cWrite((nxp)->addr, (nxp)->chan, reg, data),\
+            (nxp)->bcycle += 3)
+#define nxpWriteBuffer(nxp, reg, n, buf) (\
+            nxpi2cWriteBuffer((nxp)->addr, (nxp)->chan, reg, n, buf),\
+            (nxp)->bcycle += ((n) + 2))
+#endif
+
+static
+void
+nxpReadSPI(nxpSerial_t *nxp, uint8_t reg, uint8_t *buf)
+{
+    ENABLE_NXP(nxp);
+    spiTransferByte(nxp->spibus, 0x80|NXP_CHANREG(nxp->chan, reg));
+    *buf = spiTransferByte(nxp->spibus, 0);
+    DISABLE_NXP(nxp);
+}
+
+static
+void
+nxpWriteSPI(nxpSerial_t *nxp, uint8_t reg, uint8_t val)
+{
+    uint8_t wbuf[2];
+
+    wbuf[0] = NXP_CHANREG(nxp->chan, reg);
+    wbuf[1] = val;
+    ENABLE_NXP(nxp);
+    spiTransfer(nxp->spibus, NULL, wbuf, 2);
+    DISABLE_NXP(nxp);
+}
+
+static
+void
+nxpWriteBufferSPI(nxpSerial_t *nxp, uint8_t reg, int len, uint8_t *buf)
+{
+    ENABLE_NXP(nxp);
+    spiTransferByte(nxp->spibus, reg);
+    spiTransfer(nxp->spibus, NULL, buf, len);
+    DISABLE_NXP(nxp);
+}
+
+static
+void
+nxpReadBufferSPI(nxpSerial_t *nxp, uint8_t reg, int len, uint8_t *buf)
+{
+    ENABLE_NXP(nxp);
+    spiTransferByte(nxp->spibus, 0x80|(reg << 3));
+    spiTransfer(nxp->spibus, buf, NULL, len);
+    DISABLE_NXP(nxp);
+}
+
+static bool
+nxpRead(nxpSerial_t *nxp, uint8_t reg, int n, uint8_t *buf)
+{
+    if (nxp->bustype == NXPSERIAL_BUSTYPE_I2C) {
+        nxp->bcycle += n + 5;
+    	return nxpi2cRead(nxp->addr, nxp->chan, reg, n, buf);
+    } else {
+        if (n == 1)
+            nxpReadSPI(nxp, reg, buf);
+        else
+            nxpReadBufferSPI(nxp, reg, n, buf);
+
+        return true;
+    }
+}
+
+static bool
+nxpWrite(nxpSerial_t *nxp, uint8_t reg, uint8_t data)
+{
+    if (nxp->bustype == NXPSERIAL_BUSTYPE_I2C) {
+        nxp->bcycle += 3;
+        return nxpi2cWrite(nxp->addr, nxp->chan, reg, data);
+    } else {
+        nxpWriteSPI(nxp, reg, data);
+        return true;
+    }
+}
+
+static bool
+nxpWriteBuffer(nxpSerial_t *nxp, uint8_t reg, int n, uint8_t *buf)
+{
+    if (nxp->bustype == NXPSERIAL_BUSTYPE_I2C) {
+        nxp->bcycle += n + 2;
+        return nxpi2cWriteBuffer(nxp->addr, nxp->chan, reg, n, buf);
+    } else {
+        nxpWriteBufferSPI(nxp, reg, n, buf);
+        return true;
+    }
+}
+
 static
 bool
 nxpResetNXP(nxpSerial_t *nxp)
 {
     uint8_t ioc, lcr, lsr;
 
+#if 0
+uint8_t spr;
+nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
+printf("nxpResetNXP: pre reset spr 0x%x\r\n", spr);
+#endif
+
     nxpRead(nxp, IS7x0_REG_IOCONTROL, 1, &ioc);
     nxpWrite(nxp, IS7x0_REG_IOCONTROL, ioc|(1 << 3));
 
     delay(5);  // This is a software reset, so delay can be much shorter.
+
+#if 0
+nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
+printf("nxpResetNXP: post reset spr 0x%x\r\n", spr);
+#endif
 
     if (!nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr)
      || !nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr))
@@ -417,46 +532,59 @@ nxpReset(nxpSerial_t *nxp)
     return false;
 }
 
-void
-spiprobe(void)
-{
-    uint8_t pbuf[2] = { 0x55, 0xAA };
-    ENABLE_NXP;
-    spiTransfer(SPI2, NULL, pbuf, 2);
-    DISABLE_NXP;
-}
-
-static
-void
-nxpReadSPIreg(nxpSerial_t *nxp, uint8_t reg, int len, uint8_t *buf)
-{
-    uint8_t command[2];
-    uint8_t in[2];
-
-    command[0] = (0x80 | (reg << 3));
-    command[1] = 0; // Don't care?
-
-    ENABLE_NXP;
-
-    //spiTransfer(nxp->spibus, in, command, sizeof(command));
-    spiTransfer(SPI2, in, command, sizeof(command));
-
-    DISABLE_NXP;
-
-    *buf = in[1];
-}
-
-
 static
 bool
 nxpProbeNXPSPI(nxpSerial_t *nxp)
 {
-    uint8_t lcr, lsr, spr;
-    uint8_t txlvl;
+    uint8_t rhr, ier, iir, lcr, mcr, lsr, msr, spr, txlvl, rxlvl, iodir, iostate, iointena, iocontrol, efcr;
 
-    nxpReadSPIreg(nxp, IS7x0_REG_LCR, 1, &lcr);
-    nxpReadSPIreg(nxp, IS7x0_REG_LSR, 1, &lsr);
-    nxpReadSPIreg(nxp, IS7x0_REG_SPR, 1, &spr);
+#if 0
+    nxpReadSPI(nxp, IS7x0_REG_RHR, &rhr);
+    nxpReadSPI(nxp, IS7x0_REG_IER, &ier);
+    nxpReadSPI(nxp, IS7x0_REG_IIR, &iir);
+    nxpReadSPI(nxp, IS7x0_REG_LCR, &lcr);
+    nxpReadSPI(nxp, IS7x0_REG_MCR, &mcr);
+    nxpReadSPI(nxp, IS7x0_REG_LSR, &lsr);
+    nxpReadSPI(nxp, IS7x0_REG_MSR, &msr);
+    nxpReadSPI(nxp, IS7x0_REG_SPR, &spr);
+    nxpReadSPI(nxp, IS7x0_REG_TXLVL, &txlvl);
+    nxpReadSPI(nxp, IS7x0_REG_RXLVL, &rxlvl);
+    nxpReadSPI(nxp, IS7x0_REG_IODIR, &iodir);
+    nxpReadSPI(nxp, IS7x0_REG_IOSTATE, &iostate);
+    nxpReadSPI(nxp, IS7x0_REG_IOINTENA, &iointena);
+    nxpReadSPI(nxp, IS7x0_REG_IOCONTROL, &iocontrol);
+    nxpReadSPI(nxp, IS7x0_REG_EFCR, &efcr);
+#else
+    nxpRead(nxp, IS7x0_REG_RHR, 1, &rhr);
+    nxpRead(nxp, IS7x0_REG_IER, 1, &ier);
+    nxpRead(nxp, IS7x0_REG_IIR, 1, &iir);
+    nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr);
+    nxpRead(nxp, IS7x0_REG_MCR, 1, &mcr);
+    nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr);
+    nxpRead(nxp, IS7x0_REG_MSR, 1, &msr);
+    nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
+    nxpRead(nxp, IS7x0_REG_TXLVL, 1, &txlvl);
+    nxpRead(nxp, IS7x0_REG_RXLVL, 1, &rxlvl);
+    nxpRead(nxp, IS7x0_REG_IODIR, 1, &iodir);
+    nxpRead(nxp, IS7x0_REG_IOSTATE, 1, &iostate);
+    nxpRead(nxp, IS7x0_REG_IOINTENA, 1, &iointena);
+    nxpRead(nxp, IS7x0_REG_IOCONTROL, 1, &iocontrol);
+    nxpRead(nxp, IS7x0_REG_EFCR, 1, &efcr);
+#endif
+
+    dprintf(("nxpProbeNXPSPI: rhr 0x%x ier 0x%x iir 0x%x lcr 0x%x mcr 0x%x lsr 0x%x msr 0x%x spr 0x%x\r\n", rhr, ier, iir, lcr, mcr, lsr, msr, spr));
+    dprintf(("nxpProbeNXPSPI: txlvl 0x%x rxlvl 0x%x iodir 0x%x iostate 0x%x iointena 0x%x iocontrol 0x%x efcr 0x%x\r\n", txlvl, rxlvl, iodir, iostate, iointena, iocontrol, efcr));
+
+    // Test nxpReadBufferSPI
+    uint8_t rbuf[4];
+    nxpReadBufferSPI(nxp, IS7x0_REG_RHR, 4, rbuf);
+
+    // Test nxpWriteSPI
+    nxpWriteSPI(nxp, IS7x0_REG_SPR, 0xAA);
+
+    // Test nxpWriteBufferSPI
+    uint8_t wbuf[4] = { 0x12, 0x34, 0x56, 0x78 };
+    nxpWriteBufferSPI(nxp, IS7x0_REG_THR, 4, wbuf);
 
     return false;
 }
@@ -468,24 +596,52 @@ nxpProbeNXP(nxpSerial_t *nxp)
     uint8_t lcr, lsr;
     uint8_t txlvl;
 
+#if 0
     if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
         return nxpProbeNXPSPI(nxp);
     }
+#endif
 
     if (!nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr)
-     || !nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr))
+     || !nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr)) {
+        dprintf(("nxpProbeNXP: lcr or lsr read failed\r\n"));
         return false;
+    }
 
-    if (lcr == 0x1D && (lsr & 0x60) == 0x60)
+    dprintf(("nxpProbeNXP: lcr 0x%x lsr 0x%x\r\n", lcr, lsr));
+
+    // Reset state: LCR = 0x1D, LSR = 0x60
+    // "7.4.1 Hardware reset, Power-On Reset (POR) and software reset"
+    if (lcr == 0x1D && (lsr & 0x60) == 0x60) {
+        dprintf(("nxpProbeNXP: lcr and lsr reset signature match\r\n"));
         return true;
+    }
 
     // Not after reset or unknown chip.
+    // Try reading the SPR for a signature.
+    uint8_t spr;
+    nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
+    dprintf(("nxpProbeNXP: spr 0x%x\r\n", spr));
+
+    if (spr == 0xAA) {
+        // It looks like we have seen this chip before.
+        dprintf(("nxpProbeNXP: spr signature match\r\n"));
+        return true;
+    }
+
     // Try identifying the chip non-intrusively.
 
     // Wait until THR and TSR to go empty.
 
+    // o If TXLVL is not zero, see if TXLVL is decreasing.
+    //   (Must wait for longest 1 char time = 1/15 sec)
+
     if (!(lsr & IS7x0_LSR_TXEMPTY)) {
-            delay(10);
+            // XXX Should be long enough for 64 bytes to go out @150bps
+            // XXX 150/10 = 15 bytes/sec, 64/15 = 4.267secs!!!
+            // 100msec is good for 1char@9600bps
+            delay(100);
+
             nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr);
             if (!(lsr & IS7x0_LSR_TXEMPTY))
                 return false;
@@ -495,8 +651,10 @@ nxpProbeNXP(nxpSerial_t *nxp)
 
     nxpRead(nxp, IS7x0_REG_TXLVL, 1, &txlvl);
 
-    if (txlvl == 64)
+    if (txlvl == 64) {
+        dprintf(("nxpProbeNXP: txlvl signature match\r\n"));
         return true;
+    }
 
     return false;
 }
@@ -764,6 +922,13 @@ static void nxpSetTriggerLevel(nxpSerial_t *nxp)
     nxpWrite(nxp, IS7x0_REG_FCR, fcr);
     UBdelayMicroseconds(50);
 
+#if 0
+uint8_t spr;
+nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
+printf("nxpSetTriggerLevel: pre spr 0x%x\r\n", spr);
+#endif
+
+    // Enable TCR/TLR access
     nxpRead(nxp, IS7x0_REG_MCR, 1, &mcr);
     mcr |= IS7x0_MCR_TCRTLR_EN;
     nxpWrite(nxp, IS7x0_REG_MCR, mcr);
@@ -771,6 +936,16 @@ static void nxpSetTriggerLevel(nxpSerial_t *nxp)
 
     tlr = (1 << IS7x0_TLR_RX_SFT)|(((NXPSERIAL_MAX_TXFRAG + 1) / 4) << IS7x0_TLR_TX_SFT);
     nxpWrite(nxp, IS7x0_REG_TLR, tlr);
+
+    // Disable TCR/TLR access
+    mcr &= ~IS7x0_MCR_TCRTLR_EN;
+    nxpWrite(nxp, IS7x0_REG_MCR, mcr);
+    UBdelayMicroseconds(50);
+
+#if 0
+nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
+printf("nxpSetTriggerLevel: post spr 0x%x\r\n", spr);
+#endif
 
 #if 0 // Done in nxpFIFOEnable()
     fcr = IS7x0_FCR_FIFO_EN;
@@ -810,17 +985,17 @@ serialPort_t *openNXPSerial(
     nxp = &nxpSerialPorts[portIndex];
 
     switch (portIndex) {
-    //case 7:
-    case 0:
+    case 7:
         // Sparkfun BOB on SPI
         nxp->bustype = NXPSERIAL_BUSTYPE_SPI;
         nxp->spibus = NXPSERIAL_SPI_INSTANCE;
+        nxp->spicsgpio = NXPSERIAL_SPI_CS_GPIO;
+        nxp->spicspin = NXPSERIAL_SPI_CS_PIN;
         nxp->devtype = NXPSERIAL_DEVTYPE_NXP;
         nxp->freq = 14745600;
         nxp->polled = 1;
         break;
 
-#if 0
     case 0:
         // Sparkfun BOB
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
@@ -831,13 +1006,11 @@ serialPort_t *openNXPSerial(
         nxp->polled = 1;
 
         //setupDebugPins();
-#endif
 
         break;
 
     case 1:
         // Switch Science BOB
-        // Should obtain from cli variables
         nxp->bustype = NXPSERIAL_BUSTYPE_I2C;
         nxp->devtype = NXPSERIAL_DEVTYPE_NXP;
         nxp->addr = 0x4c;
@@ -900,8 +1073,22 @@ serialPort_t *openNXPSerial(
         return NULL;
     }
 
+    dprintf(("openNXPSerial: probing and resetting portIndex %d\r\n", portIndex));
+
     if (!nxpProbe(nxp) || !nxpReset(nxp))
         return NULL;
+
+    // If this is a NXP chip, we write a signature into SPR for hot start.
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP) {
+        if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI)
+            nxpWriteSPI(nxp, IS7x0_REG_SPR, 0xAA);
+        else
+            nxpWrite(nxp, IS7x0_REG_SPR, 0xAA);
+    }
+
+    if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
+        return NULL;
+    }
 
     nxp->port.vTable = nxpSerialVTable;
     nxp->port.baudRate = baud;
