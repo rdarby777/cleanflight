@@ -22,8 +22,7 @@
 
 void initLtmTelemetry(void);
 void handleLtmTelemetry(void);
-//void checkLtmTelemetryState(void);
-bool checkLtmTelemetryState(void);
+int checkLtmTelemetryState(void);
 
 void freeLtmTelemetryPort(void);
 void configureLtmTelemetryPort(void);

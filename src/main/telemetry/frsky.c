@@ -467,20 +467,20 @@ bool hasEnoughTimeLapsedSinceLastTelemetryTransmission(uint32_t currentMillis)
     return currentMillis - lastCycleTime >= CYCLETIME;
 }
 
-bool checkFrSkyTelemetryState(void)
+int checkFrSkyTelemetryState(void)
 {
     bool newTelemetryEnabledValue = telemetryDetermineEnabledState(frskyPortSharing);
 
     if (newTelemetryEnabledValue == frskyTelemetryEnabled) {
-        return false;
+        return 0;
     }
 
     if (newTelemetryEnabledValue) {
         configureFrSkyTelemetryPort();
-        return false;
+        return 0;
     } else {
         freeFrSkyTelemetryPort();
-        return true;
+        return 1;
     }
 }
 

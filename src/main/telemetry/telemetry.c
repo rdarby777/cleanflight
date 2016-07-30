@@ -82,29 +82,13 @@ bool telemetryDetermineEnabledState(portSharing_e portSharing)
     return enabled;
 }
 
-bool telemetryCheckState(void)
+int telemetryCheckState(void)
 {
-#if 1
-    bool FrSkyChanged, HoTTChanged, SmartPortChanged, LtmChanged, MAVLinkChanged;
-
-    FrSkyChanged = checkFrSkyTelemetryState();
-    HoTTChanged = checkHoTTTelemetryState();
-    SmartPortChanged = checkSmartPortTelemetryState();
-    LtmChanged = checkLtmTelemetryState();
-    MAVLinkChanged = checkMAVLinkTelemetryState();
-
-    return FrSkyChanged||HoTTChanged||SmartPortChanged||LtmChanged||MAVLinkChanged;
-#else
-    bool changed;
-
-    changed = checkFrSkyTelemetryState();
-    changed |= checkHoTTTelemetryState();
-    changed |= checkSmartPortTelemetryState();
-    changed |= checkLtmTelemetryState();
-    changed |= checkMAVLinkTelemetryState();
-
-    return changed;
-#endif
+    return checkFrSkyTelemetryState()
+        + checkHoTTTelemetryState()
+        + checkSmartPortTelemetryState()
+        + checkLtmTelemetryState()
+        + checkMAVLinkTelemetryState();
 }
 
 void telemetryProcess(uint16_t deadband3d_throttle)

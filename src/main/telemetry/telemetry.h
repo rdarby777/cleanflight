@@ -36,7 +36,7 @@ PG_DECLARE(telemetryConfig_t, telemetryConfig);
 
 void telemetryInit(void);
 
-bool telemetryCheckState(void);
+int telemetryCheckState(void);
 void telemetryProcess(uint16_t deadband3d_throttle);
 
 bool telemetryDetermineEnabledState(portSharing_e portSharing);

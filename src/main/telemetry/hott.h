@@ -493,7 +493,7 @@ typedef struct hottTelemetryConfig_s {
 PG_DECLARE(hottTelemetryConfig_t, hottTelemetryConfig);
 
 void handleHoTTTelemetry(void);
-bool checkHoTTTelemetryState(void);
+int checkHoTTTelemetryState(void);
 
 void initHoTTTelemetry(void);
 void configureHoTTTelemetryPort(void);
