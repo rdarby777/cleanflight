@@ -225,6 +225,26 @@ void buttonsHandleColdBootButtonPresses(void)
 
 #endif
 
+serialPort_t *dport = NULL;
+
+void dprintfInit(void)
+{
+    dport = openSerialPort(
+	SERIAL_PORT_UART2,   		// serialPortIdentifier_e identifier
+        FUNCTION_NONE,                  // serialPortFunction_e function,
+        NULL,                           // serialReceiveCallbackPtr callback,
+        //BAUD_115200,                    // uint32_t baudrate,
+        115200,                    // uint32_t baudrate,
+        MODE_RXTX,                      // portMode_t mode,
+        SERIAL_NOT_INVERTED             // portOptions_t options
+    );
+
+    setPrintfSerialPort(dport);
+
+    if (dport)
+        printf("\r\nDebug printf initialized\r\n");
+}
+
 void init(void)
 {
     drv_pwm_config_t pwm_params;
@@ -414,6 +434,8 @@ void init(void)
 #ifdef INVERTER
     initInverter();
 #endif
+
+dprintfInit();
 
 
 #ifdef USE_SPI

@@ -375,6 +375,13 @@ static void nxpZEDON(void)
 }
 
 /*
+ * Port level
+ */
+static void nxpInitSPI(nxpSerial_t *nxp)
+{
+}
+
+/*
  * Register level access
  */
 #define NXP_CHANREG(chan,reg) (((reg) << 3)|((chan)<< 1))
@@ -485,32 +492,59 @@ static
 bool
 nxpResetNXP(nxpSerial_t *nxp)
 {
-    uint8_t ioc, lcr, lsr;
+    uint8_t ioc, lcr, lsr, efcr;
 
-#if 0
+    if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
+        // Software reset in SPI mode is broken.
+        dprintf(("nxpResetNXP: SPI, assume successful reset\r\n"));
+        goto resetok;
+    }
+
+#if 1
 uint8_t spr;
 nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
-printf("nxpResetNXP: pre reset spr 0x%x\r\n", spr);
+dprintf(("nxpResetNXP: pre reset spr 0x%x\r\n", spr));
 #endif
 
     nxpRead(nxp, IS7x0_REG_IOCONTROL, 1, &ioc);
-    nxpWrite(nxp, IS7x0_REG_IOCONTROL, ioc|(1 << 3));
+    nxpWrite(nxp, IS7x0_REG_IOCONTROL, ioc|IS7x0_IOC_SRESET);
 
-    delay(5);  // This is a software reset, so delay can be much shorter.
+    for (int retry = 0 ; retry < 10 ; retry++) {
+        delay(5);  // This is a software reset, so delay can be much shorter???.
+        nxpRead(nxp, IS7x0_REG_IOCONTROL, 1, &ioc);
+        if (ioc & IS7x0_IOC_SRESET) {
+            dprintf(("nxpResetNXP: ioc 0x%x\r\n", ioc));
+        }
+    }
 
-#if 0
+    if (ioc & IS7x0_IOC_SRESET) {
+        dprintf(("nxpResetNXP: SRESET didn't go down ioc 0x%x\r\n", ioc));
+        return false;
+    }
+
+#if 1
 nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
-printf("nxpResetNXP: post reset spr 0x%x\r\n", spr);
+dprintf(("nxpResetNXP: post reset spr 0x%x\r\n", spr));
 #endif
 
     if (!nxpRead(nxp, IS7x0_REG_LCR, 1, &lcr)
-     || !nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr))
+     || !nxpRead(nxp, IS7x0_REG_LSR, 1, &lsr)) {
+        dprintf(("nxpResetNXP: lcr or lcr read failed\r\n"));
         return false;
+    }
 
-    if (lcr == 0x1D && (lsr & 0x60) == 0x60)
-        return true;
+    dprintf(("nxpResetNXP: lcr 0x%x lsr 0x%x\r\n", lcr, lsr));
+
+    if (lcr == 0x1D && (lsr & 0x60) == 0x60) {
+        goto resetok;
+    }
 
     return false;
+
+resetok:;
+    // Disable transmitter & receiver
+    nxpRead(nxp,IS7x0_REG_EFCR, 1, &efcr);
+    nxpWrite(nxp, IS7x0_REG_EFCR, efcr|IS7x0_EFCR_TXDISABLE|IS7x0_EFCR_RXDISABLE);
 }
 
 static
@@ -555,6 +589,10 @@ nxpProbeNXP(nxpSerial_t *nxp)
     }
 
     dprintf(("nxpProbeNXP: lcr 0x%x lsr 0x%x\r\n", lcr, lsr));
+
+    uint8_t iir;
+    nxpRead(nxp, IS7x0_REG_IIR, 1, &iir);
+    dprintf(("nxpProbeNXP: iir 0x%x\r\n", iir));
 
     // Reset state: LCR = 0x1D, LSR = 0x60
     // "7.4.1 Hardware reset, Power-On Reset (POR) and software reset"
@@ -1021,15 +1059,17 @@ serialPort_t *openNXPSerial(
 
     dprintf(("openNXPSerial: probing and resetting portIndex %d\r\n", portIndex));
 
-    if (!nxpProbe(nxp) || !nxpReset(nxp))
-        return NULL;
+    if (!nxpProbe(nxp)) {
+        dprintf(("openNXPSerial: probe failed\r\n"));
+    }
 
     // If this is a NXP chip, we write a signature into SPR for hot start.
-    if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP) {
-        if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI)
-            nxpWriteSPI(nxp, IS7x0_REG_SPR, 0xAA);
-        else
-            nxpWrite(nxp, IS7x0_REG_SPR, 0xAA);
+    if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP)
+        nxpWrite(nxp, IS7x0_REG_SPR, 0xAA);
+
+    if (!nxpReset(nxp)) {
+        dprintf(("openNXPSerial: reset failed\r\n"));
+        return NULL;
     }
 
     nxp->port.vTable = nxpSerialVTable;
@@ -1048,7 +1088,7 @@ serialPort_t *openNXPSerial(
 
     if (nxp->devtype != NXPSERIAL_DEVTYPE_UBLOX) {
         // Superfluious reset???
-        nxpWrite(nxp, IS7x0_REG_IOCONTROL, IS7x0_IOC_RESET);
+        nxpWrite(nxp, IS7x0_REG_IOCONTROL, IS7x0_IOC_SRESET);
         UBdelayMicroseconds(50);
 
         nxpEnableEnhancedFunctions(nxp);

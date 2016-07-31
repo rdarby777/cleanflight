@@ -105,7 +105,7 @@
 #define     IS7x0_TLR_TX_SFT     0
 
 // Bits in IOCONTROL
-#define     IS7x0_IOC_RESET      0x08
+#define     IS7x0_IOC_SRESET      0x08
 
 // Bits in EFR
 #define     IS7x0_EFR_ENH        0x10
