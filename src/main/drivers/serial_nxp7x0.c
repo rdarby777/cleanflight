@@ -65,6 +65,21 @@ int max_txfrag = NXPSERIAL_MAX_TXFRAG;
 // 0x68 read = addr68+reg43+addr+6datar = 9 bytes
 // 0x68 read = addr68+reg3b+addr+6datar = 9 bytes
  
+// Per device function vector (not used yet)
+
+typedef struct devOps_s {
+    void (*reset)(struct nxpSerial_s *);
+    void (*init)(struct nxpSerial_s *);
+
+    void (*setSpeed)(struct nxpSerial_s *);
+    void (*setLine)(struct nxpSerial_s *);
+    void (*transmitterControl)(struct nxpSerial_s *, bool);
+    void (*receiverControl)(struct nxpSerial_s *, bool);
+
+    void (*getRxLvl)(struct nxpSerial_s *);
+    void (*getTxLvl)(struct nxpSerial_s *);
+} devOps_t;
+
 typedef struct nxpSerial_s {
     serialPort_t     port;    // Must be the first
     volatile uint8_t rxBuf[NXPSERIAL_BUFFER_SIZE];
@@ -95,6 +110,8 @@ typedef struct nxpSerial_s {
 #define UBX_REG_LENLO    0xfe
 #define UBX_REG_DATA     0xff
 
+    devOps_t         devOps;   // XXX not used yet
+
     uint16_t         apiver;
 
     int32_t         freq;      // -1:don't care, 0:baudrate/150, otherwise::crystal
@@ -113,7 +130,9 @@ typedef struct nxpSerial_s {
     uint8_t          efcr;      // EFCR soft copy
 
     int              bcycle;
+
 } nxpSerial_t;
+
 
 extern nxpSerial_t nxpSerialPorts[];
 extern const struct serialPortVTable nxpSerialVTable[];
@@ -495,7 +514,8 @@ nxpResetNXP(nxpSerial_t *nxp)
     uint8_t ioc, lcr, lsr, efcr;
 
     if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
-        // Software reset in SPI mode is broken.
+        // Software reset in SPI mode is broken?
+        // XXX Needs further investigation.
         dprintf(("nxpResetNXP: SPI, assume successful reset\r\n"));
         goto resetok;
     }
@@ -545,6 +565,7 @@ resetok:;
     // Disable transmitter & receiver
     nxpRead(nxp,IS7x0_REG_EFCR, 1, &efcr);
     nxpWrite(nxp, IS7x0_REG_EFCR, efcr|IS7x0_EFCR_TXDISABLE|IS7x0_EFCR_RXDISABLE);
+    return true;
 }
 
 static
@@ -978,6 +999,8 @@ serialPort_t *openNXPSerial(
         nxp->devtype = NXPSERIAL_DEVTYPE_NXP;
         nxp->freq = 14745600;
         nxp->polled = 1;
+
+        nxp->devOps.reset = nxpResetNXP;
         break;
 
     case 0:
@@ -1249,6 +1272,7 @@ static uint8_t dummytbuf[16];
 static uint8_t dummyrbuf[128];
 static int seq = 0;
 static int dummycount = 0;
+
 #include "common/printf.h"
 
 void nxpSerialPoller(void)
@@ -1269,7 +1293,7 @@ void nxpSerialPoller(void)
 
     uint8_t rxqlen;
 
-    digitalHi(GPIOB, Pin_4);
+    //digitalHi(GPIOB, Pin_4);
 
 #if 0
   // Arduino-UB
@@ -1361,55 +1385,62 @@ void nxpSerialPoller(void)
             break;
         }
 
-        // If there's a room in rxBuf, try to read from RX FIFO.
+        // If the current device is in MODE_RX and
+        // if there's a room in rxBuf, try to read from RX FIFO.
         // Limit single transfer to MIN(rxroom, rxfifolevel, maxfrag).
         // Actual transfer size will further be limited by the end
         // of the physical buffer (can't wrap around in a burst transfer).
 
-        rxroom = rxBufferRoom(nxp->port);
+        if (nxp->port.mode & MODE_RX) {
 
-        if (rxroom) {
-            if (nxp->rxlvl) {
-                rxlen = (rxroom < nxp->rxlvl) ? rxroom : nxp->rxlvl;
+            rxroom = rxBufferRoom(nxp->port);
 
-                if (rxlen > NXPSERIAL_MAX_RXFRAG)
-                    rxlen = NXPSERIAL_MAX_RXFRAG;
+            if (rxroom) {
+                if (nxp->rxlvl) {
+                    rxlen = (rxroom < nxp->rxlvl) ? rxroom : nxp->rxlvl;
 
-                rxburst = rxBufferBurstLimit(nxp->port);
+                    if (rxlen > NXPSERIAL_MAX_RXFRAG)
+                        rxlen = NXPSERIAL_MAX_RXFRAG;
 
-                if (rxlen > rxburst)
-                    rxlen = rxburst;
+                    rxburst = rxBufferBurstLimit(nxp->port);
 
-                // Debuggin' (Shouldn't happen)
-                if (rxlen <= 0 || rxlen > NXPSERIAL_MAX_RXFRAG) {
-                    rxlen = 1;
+                    if (rxlen > rxburst)
+                        rxlen = rxburst;
+
+                    // Debuggin' (Shouldn't happen)
+                    if (rxlen <= 0 || rxlen > NXPSERIAL_MAX_RXFRAG) {
+                        rxlen = 1;
+                    }
+
+                    nxpReadRHR(nxp, rxlen, 
+                            &(nxp->port.rxBuffer[nxp->port.rxBufferHead]));
+
+                    nxp->port.rxBufferHead = (nxp->port.rxBufferHead + rxlen)
+                            % nxp->port.rxBufferSize;
+
+                    nxp->rxlvl -= rxlen;
                 }
-
-                nxpReadRHR(nxp, rxlen, 
-                        &(nxp->port.rxBuffer[nxp->port.rxBufferHead]));
-
-                nxp->port.rxBufferHead = (nxp->port.rxBufferHead + rxlen)
-                        % nxp->port.rxBufferSize;
-
-                nxp->rxlvl -= rxlen;
             }
-        }
 
-        int rxavail;
+            // If callback is set, feed newly received data.
+            int rxavail;
 
-        if ((rxavail = rxBufferLen(nxp->port)) && nxp->port.callback) {
-            uint8_t ch;
-            while (rxavail--) {
-                ch = nxp->port.rxBuffer[nxp->port.rxBufferTail];
-                nxp->port.rxBufferTail = (nxp->port.rxBufferTail + 1)
-                        % nxp->port.rxBufferSize;
-                (*nxp->port.callback)(ch);
+            if (nxp->port.callback && (rxavail = rxBufferLen(nxp->port))) {
+                uint8_t ch;
+                while (rxavail--) {
+                    ch = nxp->port.rxBuffer[nxp->port.rxBufferTail];
+                    nxp->port.rxBufferTail = (nxp->port.rxBufferTail + 1)
+                            % nxp->port.rxBufferSize;
+                    (*nxp->port.callback)(ch);
+                }
             }
         }
 
         // XXX Take rxlen into account for txlen calculation.
 
-        if (((txavail = txBufferLen(nxp->port)) != 0) && bcycle < 32) {
+        if ((nxp->port.mode & MODE_TX)
+            && ((txavail = txBufferLen(nxp->port)) != 0)
+            && bcycle < 32) {
 
             // Can pump out without retrieving a new txlvl value,
             // knowing there is at least old txlvl bytes of space
@@ -1460,7 +1491,7 @@ out:;
     if (bcycle > debug[2])
         debug[2] = bcycle;
 
-    digitalLo(GPIOB, Pin_4);
+    //digitalLo(GPIOB, Pin_4);
 }
 
 const struct serialPortVTable nxpSerialVTable[] = {
