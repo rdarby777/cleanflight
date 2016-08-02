@@ -21,10 +21,17 @@
 #define SPI_0_5625MHZ_CLOCK_DIVIDER 128
 #define SPI_18MHZ_CLOCK_DIVIDER     2
 #define SPI_9MHZ_CLOCK_DIVIDER      4
+#define SPI_4MHZ_CLOCK_DIVIDER      9
+
+typedef struct spiSettings_s {
+    SPI_InitTypeDef spi;
+    uint16_t divisor;
+} spiSettings_t;
 
 bool spiInit(SPI_TypeDef *instance);
 void spiSetDivisor(SPI_TypeDef *instance, uint16_t divisor);
+void spiInitSettings(SPI_TypeDef *instance, spiSettings_t *settings, int spimode, uint16_t divisor);
+void spiSetSettings(SPI_TypeDef *instance, spiSettings_t *settings);
 uint8_t spiTransferByte(SPI_TypeDef *instance, uint8_t in);
 bool spiIsBusBusy(SPI_TypeDef *instance);
-
 void spiTransfer(SPI_TypeDef *instance, uint8_t *out, const uint8_t *in, int len);

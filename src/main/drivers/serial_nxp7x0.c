@@ -42,7 +42,6 @@
 // 
 #define UBdelayMicroseconds(n) delayMicroseconds(n)
 
-
 #ifdef NAZE
 #define NXPSERIAL_SPI_INSTANCE NAZE_SPI_INSTANCE
 #define NXPSERIAL_SPI_CS_GPIO  NAZE_SPI_CS_GPIO
@@ -50,8 +49,12 @@
 #endif
 
 #define DISABLE_NXP(nxp)  GPIO_SetBits((nxp)->spicsgpio, (nxp)->spicspin)
-#define ENABLE_NXP(nxp)   GPIO_ResetBits((nxp)->spicsgpio, (nxp)->spicspin)
+#define ENABLE_NXP(nxp)   {\
+    spiSetSettings(nxp->spibus, &nxp->spisettings);\
+    GPIO_ResetBits((nxp)->spicsgpio, (nxp)->spicspin);}
 
+
+// XXX Should be bus dependent
 //#define NXPSERIAL_MAX_RXFRAG 16
 //#define NXPSERIAL_MAX_TXFRAG 16 
 #define NXPSERIAL_MAX_RXFRAG 12
@@ -80,6 +83,17 @@ typedef struct devOps_s {
     void (*getTxLvl)(struct nxpSerial_s *);
 } devOps_t;
 
+// XXX device hierachy?
+// XXX E.g. SC16IS7{5,6}2
+// mcu
+//   bus(SPIx)
+//     controller(SC16IS7{5,6}2)
+//       device (uart chan 0)
+//       device (uart chan 1)
+//       device (gpio chan 0)
+//       device (gpio chan 1)
+//       device (interrupt encoder)
+
 typedef struct nxpSerial_s {
     serialPort_t     port;    // Must be the first
     volatile uint8_t rxBuf[NXPSERIAL_BUFFER_SIZE];
@@ -97,8 +111,9 @@ typedef struct nxpSerial_s {
     SPI_TypeDef      *spibus;
     GPIO_TypeDef     *spicsgpio;
     uint16_t         spicspin;
+    spiSettings_t    spisettings;
 
-    uint8_t          chan;
+    uint8_t          chan;               // SC16IS7{5,6}2 has two chans
 
     uint8_t          devtype;
 #define NXPSERIAL_DEVTYPE_NONE         0
@@ -132,7 +147,6 @@ typedef struct nxpSerial_s {
     int              bcycle;
 
 } nxpSerial_t;
-
 
 extern nxpSerial_t nxpSerialPorts[];
 extern const struct serialPortVTable nxpSerialVTable[];
@@ -513,12 +527,14 @@ nxpResetNXP(nxpSerial_t *nxp)
 {
     uint8_t ioc, lcr, lsr, efcr;
 
+#if 0
     if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
         // Software reset in SPI mode is broken?
         // XXX Needs further investigation.
         dprintf(("nxpResetNXP: SPI, assume successful reset\r\n"));
         goto resetok;
     }
+#endif
 
 #if 1
 uint8_t spr;
@@ -628,7 +644,7 @@ nxpProbeNXP(nxpSerial_t *nxp)
     nxpRead(nxp, IS7x0_REG_SPR, 1, &spr);
     dprintf(("nxpProbeNXP: spr 0x%x\r\n", spr));
 
-    if (spr == 0xAA) {
+    if (spr == 0x55) {
         // It looks like we have seen this chip before.
         dprintf(("nxpProbeNXP: spr signature match\r\n"));
         return true;
@@ -670,13 +686,17 @@ nxpProbeUB(nxpSerial_t *nxp)
 {
     uint8_t id[4];
 
+    // Arduino based bridge takes a bit to boot
+    // XXX Investigate accurate timing
+    delay(200);
+
     if (!nxpRead(nxp, IS7x0_REG_SPR, 4, id))
         return false;
 
     if (id[0] == 'U' && id[1] == 'B') {
         nxp->apiver = (id[2] << 8)|id[3];
         return true;
-    } else if (id[0] == 0xAA && id[1] == 0xAA) {
+    } else if (id[0] == 0x55 && id[1] == 0xAA) {
         // PIC temporary, should implement "UBxx".
         nxp->apiver = 99;
         return true;
@@ -1080,6 +1100,10 @@ serialPort_t *openNXPSerial(
         return NULL;
     }
 
+    if (nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
+        spiInitSettings(nxp->spibus, &nxp->spisettings, 0, SPI_4MHZ_CLOCK_DIVIDER);
+    }
+
     dprintf(("openNXPSerial: probing and resetting portIndex %d\r\n", portIndex));
 
     if (!nxpProbe(nxp)) {
@@ -1088,11 +1112,16 @@ serialPort_t *openNXPSerial(
 
     // If this is a NXP chip, we write a signature into SPR for hot start.
     if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP)
-        nxpWrite(nxp, IS7x0_REG_SPR, 0xAA);
+        nxpWrite(nxp, IS7x0_REG_SPR, 0x55);
 
     if (!nxpReset(nxp)) {
-        dprintf(("openNXPSerial: reset failed\r\n"));
-        return NULL;
+        if (nxp->devtype == NXPSERIAL_DEVTYPE_NXP
+          && nxp->bustype == NXPSERIAL_BUSTYPE_SPI) {
+            dprintf(("openNXPSerial: reset failed for NXP/SPI, continuing\r\n"));
+        } else {
+            dprintf(("openNXPSerial: reset failed\r\n"));
+            return NULL;
+        }
     }
 
     nxp->port.vTable = nxpSerialVTable;
