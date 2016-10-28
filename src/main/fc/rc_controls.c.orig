@@ -40,8 +40,6 @@
 #include "fc/rc_curves.h"
 #include "fc/runtime_config.h"
 
-#include "io/cms.h"
-
 #include "io/gps.h"
 #include "io/beeper.h"
 #include "io/motors.h"
@@ -56,6 +54,18 @@
 
 #include "rx/rx.h"
 
+<<<<<<< HEAD
+#include "io/cms.h"
+
+#include "io/gps.h"
+#include "io/beeper.h"
+#include "io/motors.h"
+#include "io/vtx.h"
+
+#include "io/display.h"
+
+=======
+>>>>>>> betaflight/master
 #include "flight/pid.h"
 #include "flight/navigation.h"
 #include "flight/failsafe.h"
