@@ -147,6 +147,11 @@
 
 #define USE_DASHBOARD
 
+// Experimental for osd over displayport
+#define OSD
+
+// These should be gone
+
 // Configuratoin Menu System
 #define CMS
 

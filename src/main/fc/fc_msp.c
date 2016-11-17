@@ -1034,8 +1034,12 @@ static bool mspFcProcessOutCommand(uint8_t cmdMSP, sbuf_t *dst, mspPostProcessFn
     case MSP_OSD_CONFIG:
 #ifdef OSD
         sbufWriteU8(dst, 1); // OSD supported
+#ifdef USE_MAX7456 // Argh...
         // send video system (AUTO/PAL/NTSC)
         sbufWriteU8(dst, masterConfig.vcdProfile.video_system);
+#else
+        sbufWriteU8(dst, 0);
+#endif
         sbufWriteU8(dst, masterConfig.osdProfile.units);
         sbufWriteU8(dst, masterConfig.osdProfile.rssi_alarm);
         sbufWriteU16(dst, masterConfig.osdProfile.cap_alarm);
@@ -1535,7 +1539,11 @@ static mspResult_e mspFcProcessInCommand(uint8_t cmdMSP, sbuf_t *src)
         addr = sbufReadU8(src);
         // set all the other settings
         if ((int8_t)addr == -1) {
+#ifdef USE_MAX7456
             masterConfig.vcdProfile.video_system = sbufReadU8(src);
+#else
+            (void)sbufReadU8(src); // Skip it
+#endif
             masterConfig.osdProfile.units = sbufReadU8(src);
             masterConfig.osdProfile.rssi_alarm = sbufReadU8(src);
             masterConfig.osdProfile.cap_alarm = sbufReadU16(src);
