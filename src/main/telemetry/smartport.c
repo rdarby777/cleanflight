@@ -5,60 +5,57 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <math.h>
 
-#include "platform.h"
+#include <platform.h>
 
 #ifdef TELEMETRY
 
 #include "common/axis.h"
-#include "common/color.h"
 #include "common/maths.h"
+
+#ifdef USE_SMARTPORT_MSP_BRIDGE
+#include "common/streambuf.h"
 #include "common/utils.h"
+#endif
+
+#include "config/parameter_group.h"
+#include "config/feature.h"
 
 #include "drivers/system.h"
 #include "drivers/sensor.h"
 #include "drivers/accgyro.h"
-#include "drivers/compass.h"
-
-#include "fc/config.h"
-#include "fc/rc_controls.h"
-#include "fc/runtime_config.h"
-#include "fc/fc_msp.h"
-
-#include "io/beeper.h"
-#include "io/motors.h"
-#include "io/gps.h"
-#include "io/serial.h"
-
-#include "sensors/boardalignment.h"
-#include "sensors/sensors.h"
-#include "sensors/battery.h"
-#include "sensors/acceleration.h"
-#include "sensors/barometer.h"
-#include "sensors/compass.h"
-#include "sensors/gyro.h"
-
-#include "flight/pid.h"
-#include "flight/imu.h"
-#include "flight/mixer.h"
-#include "flight/failsafe.h"
-#include "flight/navigation.h"
-#include "flight/altitudehold.h"
+#include "drivers/serial.h"
 
 #include "rx/rx.h"
 #include "rx/msp.h"
 
+#include "fc/fc_serial.h"
+
+#include "io/motors.h"
+#include "io/gps.h"
+#include "io/serial.h"
+
+#include "sensors/sensors.h"
+#include "sensors/amperage.h"
+#include "sensors/barometer.h"
+#include "sensors/battery.h"
+#include "sensors/acceleration.h"
+
+#include "flight/pid.h"
+#include "flight/imu.h"
+#include "flight/mixer.h"
+#include "flight/navigation.h"
+#include "flight/altitudehold.h"
+
 #include "telemetry/telemetry.h"
 #include "telemetry/smartport.h"
 
-#include "config/config_profile.h"
-#include "config/feature.h"
+#include "fc/runtime_config.h"
+#include "fc/config.h"
 
+#ifdef USE_SMARTPORT_MSP_BRIDGE
 #include "msp/msp.h"
-
-extern profile_t *currentProfile;
-extern controlRateConfig_t *currentControlRateProfile;
+#endif
 
 enum
 {
@@ -76,8 +73,11 @@ enum
     FSSP_DLE_XOR    = 0x20,
 
     FSSP_DATA_FRAME = 0x10,
+
+#ifdef USE_SMARTPORT_MSP_BRIDGE
     FSSP_MSPC_FRAME = 0x30, // MSP client frame
     FSSP_MSPS_FRAME = 0x32, // MSP server frame
+#endif
 
     // ID of sensor. Must be something that is polled by FrSky RX
     FSSP_SENSOR_ID1 = 0x1B,
@@ -111,8 +111,8 @@ enum
     FSSP_DATAID_T1         = 0x0400 ,
     FSSP_DATAID_T2         = 0x0410 ,
     FSSP_DATAID_GPS_ALT    = 0x0820 ,
-    FSSP_DATAID_A3         = 0x0900 ,
-    FSSP_DATAID_A4         = 0x0910 ,
+    FSSP_DATAID_A3	   = 0x0900 ,
+    FSSP_DATAID_A4	   = 0x0910 ,
 };
 
 const uint16_t frSkyDataIdTable[] = {
@@ -128,7 +128,7 @@ const uint16_t frSkyDataIdTable[] = {
     FSSP_DATAID_LATLONG   , // twice
     //FSSP_DATAID_CAP_USED  ,
     FSSP_DATAID_VARIO     ,
-    //FSSP_DATAID_CELLS     ,
+    FSSP_DATAID_CELLS     ,
     //FSSP_DATAID_CELLS_LAST,
     FSSP_DATAID_HEADING   ,
     FSSP_DATAID_ACCX      ,
@@ -137,7 +137,8 @@ const uint16_t frSkyDataIdTable[] = {
     FSSP_DATAID_T1        ,
     FSSP_DATAID_T2        ,
     FSSP_DATAID_GPS_ALT   ,
-    FSSP_DATAID_A4        ,
+    //FSSP_DATAID_A3	  ,
+    FSSP_DATAID_A4	  ,
     0
 };
 
@@ -150,7 +151,6 @@ const uint16_t frSkyDataIdTable[] = {
 static serialPort_t *smartPortSerialPort = NULL; // The 'SmartPort'(tm) Port.
 static serialPortConfig_t *portConfig;
 
-static telemetryConfig_t *telemetryConfig;
 static bool smartPortTelemetryEnabled =  false;
 static portSharing_e smartPortPortSharing;
 
@@ -172,6 +172,8 @@ typedef struct smartPortFrame_s {
 
 #define SMARTPORT_PAYLOAD_OFFSET offsetof(smartPortFrame_t, valueId)
 #define SMARTPORT_PAYLOAD_SIZE   (SMARTPORT_FRAME_SIZE - SMARTPORT_PAYLOAD_OFFSET - 1)
+
+#ifdef USE_SMARTPORT_MSP_BRIDGE
 
 static smartPortFrame_t smartPortRxBuffer;
 static uint8_t smartPortRxBytes = 0;
@@ -199,23 +201,38 @@ enum {
     SMARTPORT_MSP_CRC_ERROR=1,
     SMARTPORT_MSP_ERROR=2
 };
+#endif
 
 static void smartPortDataReceive(uint16_t c)
 {
     static bool skipUntilStart = true;
+#ifdef USE_SMARTPORT_MSP_BRIDGE
     static bool byteStuffing = false;
     static uint16_t checksum = 0;
+#endif
 
     uint32_t now = millis();
 
     if (c == FSSP_START_STOP) {
+#ifdef USE_SMARTPORT_MSP_BRIDGE
         smartPortRxBytes = 0;
+#endif
         smartPortHasRequest = 0;
         skipUntilStart = false;
         return;
     } else if (skipUntilStart) {
         return;
     }
+
+#ifndef USE_SMARTPORT_MSP_BRIDGE
+    if ((c == FSSP_SENSOR_ID1) && (serialRxBytesWaiting(smartPortSerialPort) == 0)) {
+
+        // our slot is starting...
+        smartPortLastRequestTime = now;
+        smartPortHasRequest = 1;    
+    }
+    skipUntilStart = true;    
+#else
 
     uint8_t* rxBuffer = (uint8_t*)&smartPortRxBuffer;
     if (smartPortRxBytes == 0) {
@@ -224,6 +241,7 @@ static void smartPortDataReceive(uint16_t c)
             // our slot is starting...
             smartPortLastRequestTime = now;
             smartPortHasRequest = 1;
+
         } else if (c == FSSP_SENSOR_ID2) {
             rxBuffer[smartPortRxBytes++] = c;
             checksum = 0;
@@ -257,6 +275,7 @@ static void smartPortDataReceive(uint16_t c)
             checksum &= 0x00FF;
         }
     }
+#endif
 }
 
 static void smartPortSendByte(uint8_t c, uint16_t *crcp)
@@ -304,9 +323,8 @@ static void smartPortSendPackage(uint16_t id, uint32_t val)
     smartPortSendPackageEx(FSSP_DATA_FRAME,payload);
 }
 
-void initSmartPortTelemetry(telemetryConfig_t *initialTelemetryConfig)
+void initSmartPortTelemetry(void)
 {
-    telemetryConfig = initialTelemetryConfig;
     portConfig = findSerialPortConfig(FUNCTION_TELEMETRY_SMARTPORT);
     smartPortPortSharing = determinePortSharing(portConfig, FUNCTION_TELEMETRY_SMARTPORT);
 }
@@ -322,15 +340,17 @@ void freeSmartPortTelemetryPort(void)
 
 void configureSmartPortTelemetryPort(void)
 {
-    portOptions_t portOptions;
+    portOptions_t portOptions = 0;
 
     if (!portConfig) {
         return;
     }
 
+#ifdef USE_SMARTPORT_ONEWIRE
     portOptions = SERIAL_BIDIR;
-
-    if (telemetryConfig->telemetry_inversion) {
+#endif
+    
+    if (telemetryConfig()->telemetry_inversion) {
         portOptions |= SERIAL_INVERTED;
     }
 
@@ -355,19 +375,23 @@ bool isSmartPortTimedOut(void)
     return smartPortState >= SPSTATE_TIMEDOUT;
 }
 
-void checkSmartPortTelemetryState(void)
+bool checkSmartPortTelemetryState(void)
 {
     bool newTelemetryEnabledValue = telemetryDetermineEnabledState(smartPortPortSharing);
 
     if (newTelemetryEnabledValue == smartPortTelemetryEnabled) {
-        return;
+        return false;
     }
 
     if (newTelemetryEnabledValue)
         configureSmartPortTelemetryPort();
     else
         freeSmartPortTelemetryPort();
+
+    return true;
 }
+
+#ifdef USE_SMARTPORT_MSP_BRIDGE
 
 static void initSmartPortMspReply(int16_t cmd)
 {
@@ -381,9 +405,11 @@ static void initSmartPortMspReply(int16_t cmd)
 static void processMspPacket(mspPacket_t* packet)
 {
     initSmartPortMspReply(0);
+    smartPortMspReply.cmd = packet->cmd;
 
-    if (mspFcProcessCommand(packet, &smartPortMspReply, NULL) == MSP_RESULT_ERROR) {
+    if (mspServerCommandHandler(packet, &smartPortMspReply) < 0) {
         sbufWriteU8(&smartPortMspReply.buf, SMARTPORT_MSP_ERROR);
+        smartPortMspReply.result = -1;
     }
 
     // change streambuf direction
@@ -558,6 +584,7 @@ void handleSmartPortMspFrame(smartPortFrame_t* sp_frame)
 
     processMspPacket(&cmd);
 }
+#endif
 
 void handleSmartPortTelemetry(void)
 {
@@ -584,6 +611,7 @@ void handleSmartPortTelemetry(void)
         return;
     }
 
+#ifdef USE_SMARTPORT_MSP_BRIDGE
     if(smartPortFrameReceived) {
         smartPortFrameReceived = false;
         // do not check the physical ID here again
@@ -594,6 +622,7 @@ void handleSmartPortTelemetry(void)
             handleSmartPortMspFrame(&smartPortRxBuffer);
         }
     }
+#endif
 
     while (smartPortHasRequest) {
         // Ensure we won't get stuck in the loop if there happens to be nothing available to send in a timely manner - dump the slot if we loop in there for too long.
@@ -602,11 +631,13 @@ void handleSmartPortTelemetry(void)
             return;
         }
 
+#ifdef USE_SMARTPORT_MSP_BRIDGE
         if(smartPortMspReplyPending) {
             smartPortMspReplyPending = smartPortSendMspReply();
             smartPortHasRequest = 0;
             return;
         }
+#endif
 
         // we can send back any data we want, our table keeps track of the order and frequency of each data type we send
         uint16_t id = frSkyDataIdTable[smartPortIdCnt];
@@ -617,9 +648,6 @@ void handleSmartPortTelemetry(void)
         smartPortIdCnt++;
 
         int32_t tmpi;
-        uint32_t tmp2 = 0;
-        static uint8_t t1Cnt = 0;
-        static uint8_t t2Cnt = 0;
 
         switch(id) {
 #ifdef GPS
@@ -627,40 +655,68 @@ void handleSmartPortTelemetry(void)
                 if (sensors(SENSOR_GPS) && STATE(GPS_FIX)) {
                     //convert to knots: 1cm/s = 0.0194384449 knots
                     //Speed should be sent in knots/1000 (GPS speed is in cm/s)
-                    uint32_t tmpui = GPS_speed * 1944 / 100;
+                    uint32_t tmpui = GPS_speed * 1944 / 100; 
                     smartPortSendPackage(id, tmpui);
                     smartPortHasRequest = 0;
                 }
                 break;
 #endif
             case FSSP_DATAID_VFAS       :
-                if (feature(FEATURE_VBAT) && batteryCellCount > 0) {
-                    uint16_t vfasVoltage;
-                    if (telemetryConfig->frsky_vfas_cell_voltage) {
-                        vfasVoltage = vbat / batteryCellCount;
-                    } else {
-                        vfasVoltage = vbat;
-                    }
-                    smartPortSendPackage(id, vfasVoltage * 10); // given in 0.1V, convert to volts
+                if (feature(FEATURE_VBAT)) {
+                    smartPortSendPackage(id, vbat * 10); // given in 0.1V, convert to volts
                     smartPortHasRequest = 0;
                 }
                 break;
+            case FSSP_DATAID_CELLS       :
+                if (feature(FEATURE_VBAT) && telemetryConfig()->telemetry_send_cells) {
+                    /*
+                     * A cell packet is formated this way: https://github.com/jcheger/frsky-arduino/blob/master/FrskySP/FrskySP.cpp
+                     * content    | length
+                     * ---------- | ------
+                     * volt[id]   | 12-bits
+                     * celltotal  | 4 bits
+                     * cellid     | 4 bits
+                     */
+                    static uint8_t currentCell = 0; // Track current cell index number
+
+                    // Cells Data Payload
+                    uint32_t payload = 0;
+                    payload |= ((uint16_t)(vbat * 100 + batteryCellCount) / (batteryCellCount * 2)) & 0x0FFF;  // Cell Voltage formatted for payload, modified code from cleanflight Frsky.c, TESTING NOTE: (uint16_t)(4.2 * 500.0) & 0x0FFF;
+                    payload <<= 4;
+                    payload |= (uint8_t)batteryCellCount & 0x0F; // Cell Total Count formatted for payload
+                    payload <<= 4;
+                    payload |= (uint8_t)currentCell & 0x0F; // Current Cell Index Number formatted for payload
+
+                    // Send Payload
+                    smartPortSendPackage(id,  payload);
+                    smartPortHasRequest = 0;
+
+                    // Incremental Counter
+                    currentCell++;
+                    currentCell %= batteryCellCount; // Reset counter @ max index
+                }
+                break;
             case FSSP_DATAID_CURRENT    :
-                if (feature(FEATURE_CURRENT_METER) || feature(FEATURE_ESC_TELEMETRY)) {
-                    smartPortSendPackage(id, amperage / 10); // given in 10mA steps, unknown requested unit
+                if (feature(FEATURE_AMPERAGE_METER)) {
+                    amperageMeter_t *state = getAmperageMeter(batteryConfig()->amperageMeterSource);
+
+                    smartPortSendPackage(id, state->amperage / 10); // given in 10mA steps, unknown requested unit
                     smartPortHasRequest = 0;
                 }
                 break;
             //case FSSP_DATAID_RPM        :
             case FSSP_DATAID_ALTITUDE   :
+#ifdef BARO
                 if (sensors(SENSOR_BARO)) {
-                    smartPortSendPackage(id, baro.BaroAlt); // unknown given unit, requested 100 = 1 meter
+                    smartPortSendPackage(id, BaroAlt); // unknown given unit, requested 100 = 1 meter
                     smartPortHasRequest = 0;
                 }
+#endif
                 break;
             case FSSP_DATAID_FUEL       :
-                if (feature(FEATURE_CURRENT_METER) || feature(FEATURE_ESC_TELEMETRY)) {
-                    smartPortSendPackage(id, mAhDrawn); // given in mAh, unknown requested unit
+                if (feature(FEATURE_AMPERAGE_METER)) {
+                    amperageMeter_t *state = getAmperageMeter(batteryConfig()->amperageMeterSource);
+                    smartPortSendPackage(id, state->mAhDrawn); // given in mAh, unknown requested unit
                     smartPortHasRequest = 0;
                 }
                 break;
@@ -700,26 +756,21 @@ void handleSmartPortTelemetry(void)
                 smartPortHasRequest = 0;
                 break;
             case FSSP_DATAID_ACCX       :
-                smartPortSendPackage(id, 100 * acc.accSmooth[X] / acc.dev.acc_1G); // Multiply by 100 to show as x.xx g on Taranis
+                smartPortSendPackage(id, 100 * accSmooth[X] / acc.acc_1G); // Multiply by 100 to show as x.xx g on Taranis
                 smartPortHasRequest = 0;
                 break;
             case FSSP_DATAID_ACCY       :
-                smartPortSendPackage(id, 100 * acc.accSmooth[Y] / acc.dev.acc_1G);
+                smartPortSendPackage(id, 100 * accSmooth[Y] / acc.acc_1G);
                 smartPortHasRequest = 0;
                 break;
             case FSSP_DATAID_ACCZ       :
-                smartPortSendPackage(id, 100 * acc.accSmooth[Z] / acc.dev.acc_1G);
+                smartPortSendPackage(id, 100 * accSmooth[Z] / acc.acc_1G);
                 smartPortHasRequest = 0;
                 break;
             case FSSP_DATAID_T1         :
                 // we send all the flags as decimal digits for easy reading
 
-                // the t1Cnt simply allows the telemetry view to show at least some changes
-                t1Cnt++;
-                if (t1Cnt >= 4) {
-                    t1Cnt = 1;
-                }
-                tmpi = t1Cnt * 10000; // start off with at least one digit so the most significant 0 won't be cut off
+                tmpi =  10000; // start off with at least one digit so the most significant 0 won't be cut off
                 // the Taranis seems to be able to fit 5 digits on the screen
                 // the Taranis seems to consider this number a signed 16 bit integer
 
@@ -734,9 +785,7 @@ void handleSmartPortTelemetry(void)
                     tmpi += 10;
                 if (FLIGHT_MODE(HORIZON_MODE))
                     tmpi += 20;
-                if (FLIGHT_MODE(UNUSED_MODE))
-                    tmpi += 40;
-                if (FLIGHT_MODE(PASSTHRU_MODE))
+                if (FLIGHT_MODE(GTUNE_MODE) || FLIGHT_MODE(PASSTHRU_MODE))
                     tmpi += 40;
 
                 if (FLIGHT_MODE(MAG_MODE))
@@ -763,38 +812,9 @@ void handleSmartPortTelemetry(void)
                     smartPortSendPackage(id, (STATE(GPS_FIX) ? 1000 : 0) + (STATE(GPS_FIX_HOME) ? 2000 : 0) + GPS_numSat);
                     smartPortHasRequest = 0;
 #endif
-                } else if (feature(FEATURE_GPS)) {
+                }
+                else if (feature(FEATURE_GPS)) {
                     smartPortSendPackage(id, 0);
-                    smartPortHasRequest = 0;
-                } else if (telemetryConfig->pidValuesAsTelemetry){
-                    switch (t2Cnt) {
-                        case 0:
-                            tmp2 = currentProfile->pidProfile.P8[ROLL];
-                            tmp2 += (currentProfile->pidProfile.P8[PITCH]<<8);
-                            tmp2 += (currentProfile->pidProfile.P8[YAW]<<16);
-                        break;
-                        case 1:
-                            tmp2 = currentProfile->pidProfile.I8[ROLL];
-                            tmp2 += (currentProfile->pidProfile.I8[PITCH]<<8);
-                            tmp2 += (currentProfile->pidProfile.I8[YAW]<<16);
-                        break;
-                        case 2:
-                            tmp2 = currentProfile->pidProfile.D8[ROLL];
-                            tmp2 += (currentProfile->pidProfile.D8[PITCH]<<8);
-                            tmp2 += (currentProfile->pidProfile.D8[YAW]<<16);
-                        break;
-                        case 3:
-                            tmp2 = currentControlRateProfile->rates[FD_ROLL];
-                            tmp2 += (currentControlRateProfile->rates[FD_PITCH]<<8);
-                            tmp2 += (currentControlRateProfile->rates[FD_YAW]<<16);
-                        break;
-                    }
-                    tmp2 += t2Cnt<<24;
-                    t2Cnt++;
-                    if (t2Cnt == 4) {
-                        t2Cnt = 0;
-                    }
-                    smartPortSendPackage(id, tmp2);
                     smartPortHasRequest = 0;
                 }
                 break;
@@ -806,12 +826,13 @@ void handleSmartPortTelemetry(void)
                 }
                 break;
 #endif
-            case FSSP_DATAID_A4         :
-                if (feature(FEATURE_VBAT) && batteryCellCount > 0) {
-                    smartPortSendPackage(id, vbat * 10 / batteryCellCount ); // given in 0.1V, convert to volts
+	    case FSSP_DATAID_A4    :
+                if (feature(FEATURE_VBAT)) {
+                    smartPortSendPackage(id, vbat * 10 / batteryCellCount ); //sending calculated average cell value with 0.01 precision
                     smartPortHasRequest = 0;
                 }
                 break;
+
             default:
                 break;
                 // if nothing is sent, smartPortHasRequest isn't cleared, we already incremented the counter, just loop back to the start
